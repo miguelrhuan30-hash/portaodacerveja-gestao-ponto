@@ -1,0 +1,8 @@
+{
+  "name": "Portão da Cerveja - Gestão & Ponto",
+  "description": "Sistema completo de gestão de tarefas (Kanban) e controle de ponto com reconhecimento facial e geolocalização para a cervejaria Portão da Cerveja.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}

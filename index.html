@@ -1,0 +1,65 @@
+
+<!DOCTYPE html>
+<html lang="pt-br">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="theme-color" content="#451a03" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Portão Gestão" />
+    
+    <title>Portão da Cerveja - Gestão</title>
+    
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/931/931949.png" />
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      /* FORÇA O MODO CLARO NOS CONTROLES NATIVOS (Datas, Selects, Inputs) */
+      :root {
+        color-scheme: light;
+      }
+
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #f8fafc;
+        overscroll-behavior-y: none; /* Previne refresh ao puxar no mobile */
+      }
+      .scroll-hide::-webkit-scrollbar { display: none; }
+      
+      /* FORÇA COR DE TEXTO ESCURA E ESQUEMA CLARO EM INPUTS */
+      input, textarea, select {
+        color: #000000 !important; /* Força preto absoluto */
+        color-scheme: light !important; /* Impede inversão de cor pelo navegador */
+        background-color: #f8fafc; /* Garante fundo claro */
+      }
+      
+      /* Corrige cor do placeholder */
+      ::placeholder {
+        color: #94a3b8 !important; /* text-slate-400 */
+        opacity: 1; /* Firefox */
+      }
+    </style>
+    <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
+    "react": "https://esm.sh/react@^19.2.4",
+    "react-dom": "https://esm.sh/react-dom@^19.2.4",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.40.0",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
+    "firebase/storage": "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js",
+    "react/": "https://esm.sh/react@^19.2.4/",
+    "firebase/": "https://esm.sh/firebase@^12.9.0/"
+  }
+}
+</script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
