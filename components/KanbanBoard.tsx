@@ -317,12 +317,6 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
                              onClick={() => handleTaskClick(t)}
                              className={`group relative text-[9px] font-bold p-1.5 rounded-lg border truncate cursor-pointer transition-all hover:scale-[1.02] ${getTaskColor(t.status)}`}>
                           {t.title}
-                          <button 
-                            onClick={(e) => { e.stopPropagation(); setShowDeleteModal({ taskId: t.id, hasRecurrence: !!t.recurrence.groupId }); }}
-                            className="absolute right-1 top-1 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            <X size={10} />
-                          </button>
                         </div>
                       ))}
                     </div>
@@ -342,7 +336,6 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
                    <div key={task.id} onClick={() => handleTaskClick(task)} className={`p-5 rounded-2xl shadow-sm border group hover:border-amber-400 transition-all cursor-pointer ${getTaskColor(task.status)}`}>
                       <div className="flex justify-between items-start">
                         <h4 className="font-bold leading-tight flex-1">{task.title}</h4>
-                        <button onClick={(e) => { e.stopPropagation(); setShowDeleteModal({ taskId: task.id, hasRecurrence: !!task.recurrence.groupId }); }} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100"><X size={16}/></button>
                       </div>
                       <div className="mt-4 pt-3 border-t border-black/5 flex justify-between items-center">
                         <div className="flex -space-x-1">{task.assignedUserIds.map(uid => <div key={uid} className="w-7 h-7 rounded-full bg-slate-200 border-2 border-white flex items-center justify-center text-[9px] font-black" title={users.find(u => u.id === uid)?.name}>{users.find(u => u.id === uid)?.name[0]}</div>)}</div>
@@ -370,7 +363,18 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
                       <span>{new Date(selectedTask.startDate).toLocaleString()}</span>
                    </div>
                 </div>
-                <button onClick={() => setSelectedTask(null)} className="p-2 bg-white rounded-full border hover:bg-slate-100"><X size={20}/></button>
+                <div className="flex items-center gap-2">
+                   {currentUser.permissions.canManageTasks && (
+                      <button 
+                        onClick={() => setShowDeleteModal({ taskId: selectedTask.id, hasRecurrence: !!selectedTask.recurrence.groupId })}
+                        className="p-2 bg-rose-50 text-rose-500 rounded-full border border-rose-100 hover:bg-rose-100 hover:text-rose-600 transition-colors"
+                        title="Excluir Tarefa"
+                      >
+                        <Trash2 size={20}/>
+                      </button>
+                   )}
+                   <button onClick={() => setSelectedTask(null)} className="p-2 bg-white rounded-full border hover:bg-slate-100"><X size={20}/></button>
+                </div>
              </div>
              
              <div className="p-6 space-y-8">
@@ -636,9 +640,9 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
                 <p className="text-slate-500 text-sm mt-2">Esta ação não pode ser desfeita no sistema.</p>
              </div>
              <div className="flex flex-col gap-2">
-                <button onClick={() => { onDeleteTask(showDeleteModal.taskId, 'SINGLE'); setShowDeleteModal(null); }} className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black uppercase text-xs">Excluir apenas esta</button>
+                <button onClick={() => { onDeleteTask(showDeleteModal.taskId, 'SINGLE'); setShowDeleteModal(null); setSelectedTask(null); }} className="w-full py-4 bg-rose-600 text-white rounded-2xl font-black uppercase text-xs">Excluir apenas esta</button>
                 {showDeleteModal.hasRecurrence && (
-                  <button onClick={() => { onDeleteTask(showDeleteModal.taskId, 'RECURRING'); setShowDeleteModal(null); }} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs">Excluir toda a série</button>
+                  <button onClick={() => { onDeleteTask(showDeleteModal.taskId, 'RECURRING'); setShowDeleteModal(null); setSelectedTask(null); }} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs">Excluir toda a série</button>
                 )}
                 <button onClick={() => setShowDeleteModal(null)} className="w-full py-4 text-slate-400 font-bold uppercase text-xs">Cancelar</button>
              </div>

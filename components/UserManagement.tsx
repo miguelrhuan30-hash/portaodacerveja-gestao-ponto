@@ -130,9 +130,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onUpdateUser, on
                </button>
                {user.role !== 'MASTER' && (
                  <button 
-                  onClick={() => { if(confirm(`Remover acessos de ${user.name}? Os dados gerados por este colaborador serão mantidos no histórico, mas ele não poderá mais entrar no sistema.`)) onDeleteUser(user.id); }}
-                  className="p-2 text-slate-300 hover:text-rose-600 transition-colors"
-                  title="Remover Acessos Definitivamente"
+                  onClick={() => { if(confirm(`Tem certeza que deseja remover ${user.name}? O usuário perderá o acesso imediatamente.`)) onDeleteUser(user.id); }}
+                  className="p-2 text-slate-300 hover:text-rose-600 transition-colors bg-slate-50 hover:bg-rose-100 rounded-lg"
+                  title="Excluir Usuário"
                  >
                    <Trash2 size={20} />
                  </button>

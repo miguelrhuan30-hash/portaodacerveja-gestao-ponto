@@ -68,6 +68,7 @@ export interface ProductShortage {
   requestedBy: string;
   requestedAt: number;
   notes?: string;
+  archived?: boolean;
 }
 
 export interface AttendanceEntry {

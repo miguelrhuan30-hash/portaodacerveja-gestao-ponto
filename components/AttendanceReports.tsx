@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Calendar as CalendarIcon, Users, Clock, History, CheckCircle2, AlertCircle, Archive, Trash2, TrendingUp, Search, Grid, List, ChevronLeft, ChevronRight, MapPin, Save, ShieldCheck, RefreshCw, X, MapPinned } from 'lucide-react';
+import { Calendar as CalendarIcon, Users, Clock, History, CheckCircle2, AlertCircle, Archive, Trash2, TrendingUp, Search, Grid, List, ChevronLeft, ChevronRight, MapPin, Save, ShieldCheck, RefreshCw, X, MapPinned, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { AttendanceEntry, SystemUser, BranchLocation, Task, TaskStatus } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 
@@ -11,10 +11,11 @@ interface AttendanceReportsProps {
   locations: BranchLocation[];
   onSaveLocation: (location: BranchLocation) => void;
   onDeleteLocation: (id: string) => void;
+  onDeleteAttendance?: (id: string) => void;
   versionInfo: { version: string; deployDate: string; lastChanges: string[] };
 }
 
-const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, tasks, locations, onSaveLocation, onDeleteLocation, versionInfo }) => {
+const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, tasks, locations, onSaveLocation, onDeleteLocation, onDeleteAttendance, versionInfo }) => {
   const [activeSubTab, setActiveSubTab] = useState<'ponto' | 'historico' | 'produtividade'>('historico');
   const [viewMode, setViewMode] = useState<'KANBAN' | 'CALENDAR' | 'LIST'>('CALENDAR');
   const [selectedUser, setSelectedUser] = useState<string | 'todos'>('todos');
@@ -153,7 +154,7 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
 
       {activeSubTab === 'ponto' && (
         <div className="space-y-12">
-          {/* Painel de Geolocalização (Baseado no Screenshot) */}
+          {/* Painel de Geolocalização */}
           <div className="bg-white p-8 rounded-[2rem] border shadow-sm space-y-8">
             <div className="flex items-center gap-3 border-b pb-6">
               <div className="w-12 h-12 bg-amber-600 text-white rounded-2xl flex items-center justify-center shadow-xl"><MapPin size={24}/></div>
@@ -242,74 +243,57 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
             </div>
           </div>
 
-          {/* Cards de Locais Salvos (Dashboard Estilo Portão da Cerveja) */}
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 px-2">
-              <MapPinned className="text-amber-600" size={24}/>
-              <h4 className="text-lg font-black text-slate-800 uppercase tracking-tighter">Locais Cadastrados</h4>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {locations.map(loc => (
-                <div key={loc.id} className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-sm relative group hover:border-amber-400 transition-all hover:shadow-md">
-                  <button 
-                    onClick={() => { if(confirm("Deseja remover este local?")) onDeleteLocation(loc.id); }} 
-                    className="absolute top-6 right-6 text-slate-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"
-                  >
-                    <Trash2 size={20}/>
-                  </button>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center"><MapPin size={16}/></div>
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-600">Raio: {loc.radius}m</span>
-                    </div>
-                    <div>
-                      <h5 className="font-black text-slate-800 text-xl leading-none mb-2 truncate">{loc.name}</h5>
-                      <p className="text-xs text-slate-400 font-medium line-clamp-2 italic">"{loc.address || 'Sem endereço descritivo'}"</p>
-                    </div>
-                    <div className="pt-4 flex justify-between items-center text-[10px] font-black text-slate-400 border-t border-slate-50 uppercase tracking-widest">
-                      <span>LAT: {loc.lat.toFixed(6)}</span>
-                      <span>LNG: {loc.lng.toFixed(6)}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {locations.length === 0 && (
-                <div className="col-span-full py-20 text-center bg-slate-50 border-2 border-dashed rounded-[3rem] text-slate-300 font-black uppercase text-xs tracking-widest">
-                  Nenhum local configurado no sistema
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Rendimento de Horas (Tabela Minimalista) */}
+          {/* Lista de Registros de Ponto com Opção de Exclusão */}
           <div className="bg-white rounded-[2rem] border overflow-hidden shadow-sm">
-             <div className="p-6 border-b font-black text-slate-800 text-sm flex items-center gap-2 uppercase tracking-tighter"><Clock size={18} className="text-amber-500" /> Rendimento de Horas</div>
-             <table className="w-full text-left text-xs">
-               <thead className="bg-slate-50 text-[9px] uppercase font-black text-slate-400 tracking-widest">
-                 <tr>
-                   <th className="px-6 py-4">Funcionário</th>
-                   <th className="px-6 py-4">Meta Mensal</th>
-                   <th className="px-6 py-4">Progresso Atual</th>
-                 </tr>
-               </thead>
-               <tbody className="divide-y divide-slate-100">
-                 {users.filter(u => u.role !== 'MASTER').map(u => (
-                   <tr key={u.id} className="hover:bg-slate-50/50">
-                     <td className="px-6 py-5 font-bold text-slate-800">{u.name}</td>
-                     <td className="px-6 py-5 text-slate-500 font-medium">44 Horas</td>
-                     <td className="px-6 py-5">
-                       <div className="flex items-center gap-3">
-                          <div className="flex-1 bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                             <div className="h-full bg-emerald-500 transition-all" style={{ width: '45%' }}/>
-                          </div>
-                          <span className="font-black text-emerald-600 text-[10px]">45%</span>
-                       </div>
-                     </td>
+             <div className="p-6 border-b font-black text-slate-800 text-sm flex items-center gap-2 uppercase tracking-tighter"><Clock size={18} className="text-amber-500" /> Histórico Geral de Ponto</div>
+             <div className="overflow-x-auto">
+               <table className="w-full text-left text-xs">
+                 <thead className="bg-slate-50 text-[9px] uppercase font-black text-slate-400 tracking-widest">
+                   <tr>
+                     <th className="px-6 py-4">Colaborador</th>
+                     <th className="px-6 py-4">Tipo</th>
+                     <th className="px-6 py-4">Data/Hora</th>
+                     <th className="px-6 py-4">Local</th>
+                     <th className="px-6 py-4 text-right">Ações</th>
                    </tr>
-                 ))}
-               </tbody>
-             </table>
+                 </thead>
+                 <tbody className="divide-y divide-slate-100">
+                   {logs.map(log => (
+                     <tr key={log.id} className="hover:bg-slate-50/50 group">
+                       <td className="px-6 py-4 flex items-center gap-3">
+                         <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+                            <img src={log.photoUrl} className="w-full h-full object-cover scale-x-[-1]"/>
+                         </div>
+                         <span className="font-bold text-slate-800">{log.employeeName}</span>
+                       </td>
+                       <td className="px-6 py-4">
+                         <span className={`flex items-center gap-1 w-fit px-2 py-0.5 rounded-full font-black uppercase text-[10px] ${log.type === 'ENTRADA' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                           {log.type === 'ENTRADA' ? <ArrowUpRight size={10}/> : <ArrowDownLeft size={10}/>} {log.type}
+                         </span>
+                       </td>
+                       <td className="px-6 py-4 text-slate-600">
+                         {new Date(log.timestamp).toLocaleString()}
+                       </td>
+                       <td className="px-6 py-4 text-slate-500 truncate max-w-[200px]" title={log.location.address}>
+                         {log.location.locationName || log.location.address}
+                       </td>
+                       <td className="px-6 py-4 text-right">
+                         {onDeleteAttendance && (
+                           <button 
+                             onClick={() => onDeleteAttendance(log.id)}
+                             className="p-2 text-slate-300 hover:text-rose-600 transition-colors opacity-0 group-hover:opacity-100"
+                             title="Excluir Registro de Ponto"
+                           >
+                             <Trash2 size={16}/>
+                           </button>
+                         )}
+                       </td>
+                     </tr>
+                   ))}
+                   {logs.length === 0 && <tr><td colSpan={5} className="p-8 text-center text-slate-400 italic">Nenhum registro de ponto encontrado.</td></tr>}
+                 </tbody>
+               </table>
+             </div>
           </div>
         </div>
       )}

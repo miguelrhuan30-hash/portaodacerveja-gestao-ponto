@@ -22,6 +22,9 @@ const App: React.FC = () => {
   const [attendance, setAttendance] = useState<AttendanceEntry[]>([]);
   const [locations, setLocations] = useState<BranchLocation[]>([]);
   
+  // Estado para Categorias de Produto
+  const [productCategories, setProductCategories] = useState<string[]>(['Insumos', 'Embalagens', 'Limpeza', 'Escritório', 'Manutenção', 'Outros']);
+
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [currentUser, setCurrentUser] = useState<SystemUser | null>(null);
   const [activeTab, setActiveTab] = useState<AppTab>(AppTab.BOARD);
@@ -116,12 +119,20 @@ const App: React.FC = () => {
       setAttendance(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AttendanceEntry)));
     }, (err) => logError("Erro Pontos", err));
 
+    // Listener para Configurações (Categorias)
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
+      if (docSnap.exists() && docSnap.data().productCategories) {
+        setProductCategories(docSnap.data().productCategories);
+      }
+    });
+
     return () => { 
       unsubLocations();
       unsubUsers(); 
       unsubTasks(); 
       unsubShortages(); 
       unsubAttendance(); 
+      unsubSettings();
     };
   }, [logError]);
 
@@ -211,6 +222,14 @@ const App: React.FC = () => {
     try { await deleteDoc(doc(db, 'locations', id)); } catch (e: any) { alert("Erro ao deletar local: " + e.message); }
   };
 
+  const handleUpdateCategories = async (newCategories: string[]) => {
+    try {
+      await setDoc(doc(db, 'settings', 'general'), { productCategories: newCategories }, { merge: true });
+    } catch (e: any) {
+      alert("Erro ao atualizar categorias: " + e.message);
+    }
+  };
+
   const handleAddTask = async (task: Task) => {
     try {
       if (task.recurrence.type === 'NENHUMA') {
@@ -244,7 +263,13 @@ const App: React.FC = () => {
     } catch (e: any) { alert("Erro ao criar tarefa: " + e.message); }
   };
 
+  // --- FUNÇÕES DE EXCLUSÃO IMPLEMENTADAS ---
+
+  // Exclusão de Tarefas (Já existia, reforçada)
   const handleDeleteTask = async (taskId: string, deleteMode: 'SINGLE' | 'RECURRING') => {
+    // Permite que quem pode gerenciar tarefas (ADMIN/MASTER) exclua
+    if (!currentUser?.permissions.canManageTasks) return alert("Permissão negada para excluir tarefas.");
+    
     try {
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
@@ -267,6 +292,50 @@ const App: React.FC = () => {
     } catch (e: any) { 
         console.error(e);
         alert("Erro ao excluir: " + e.message); 
+    }
+  };
+
+  // Exclusão de Usuários (Soft Delete - Recomendado para integridade)
+  const handleDeleteUser = async (userId: string) => {
+    if (currentUser?.role !== 'MASTER' && currentUser?.role !== 'ADMIN') {
+      alert("Apenas Administradores ou Master podem excluir usuários.");
+      return;
+    }
+    try {
+      // Soft Delete: Apenas inativa para manter histórico de tarefas e ponto
+      await updateDoc(doc(db, 'users', userId), { active: false });
+    } catch (e: any) {
+      alert("Erro ao remover usuário: " + e.message);
+    }
+  };
+
+  // Exclusão de Itens de Estoque/Faltas
+  const handleDeleteShortage = async (shortageId: string) => {
+    if (!currentUser?.permissions.canManageShortages) {
+      alert("Você não tem permissão para gerenciar o estoque.");
+      return;
+    }
+    if (!confirm("Tem certeza que deseja remover este item da lista de faltas?")) return;
+    
+    try {
+      await deleteDoc(doc(db, 'shortages', shortageId));
+    } catch (e: any) {
+      alert("Erro ao excluir item: " + e.message);
+    }
+  };
+
+  // Exclusão de Registros de Ponto (Apenas MASTER para segurança)
+  const handleDeleteAttendance = async (logId: string) => {
+    if (currentUser?.role !== 'MASTER') {
+      alert("Apenas o perfil MASTER pode excluir registros de ponto por motivos de segurança.");
+      return;
+    }
+    if (!confirm("ATENÇÃO: Excluir um registro de ponto é uma ação irreversível. Deseja continuar?")) return;
+
+    try {
+      await deleteDoc(doc(db, 'pontos', logId));
+    } catch (e: any) {
+      alert("Erro ao excluir registro: " + e.message);
     }
   };
 
@@ -322,10 +391,18 @@ const App: React.FC = () => {
         <div className="p-4 md:p-8 flex-1 w-full max-w-[100vw] flex flex-col min-h-full">
           <div className="flex-1">
             {activeTab === AppTab.BOARD && <KanbanBoard tasks={tasks} users={users} onAddTask={handleAddTask} onDeleteTask={handleDeleteTask} onUpdateStatus={handleUpdateTaskStatus} currentUser={currentUser} />}
-            {activeTab === AppTab.SHORTAGE && <ProductShortageComponent shortages={shortages} currentUser={currentUser} onAddShortage={(s) => addDoc(collection(db, 'shortages'), s)} onUpdateShortage={(id, u) => updateDoc(doc(db, 'shortages', id), u)} />}
+            {activeTab === AppTab.SHORTAGE && <ProductShortageComponent 
+                shortages={shortages} 
+                currentUser={currentUser} 
+                categories={productCategories}
+                onUpdateCategories={handleUpdateCategories}
+                onAddShortage={(s) => addDoc(collection(db, 'shortages'), s)} 
+                onUpdateShortage={(id, u) => updateDoc(doc(db, 'shortages', id), u)} 
+                onDeleteShortage={handleDeleteShortage} 
+            />}
             {activeTab === AppTab.ATTENDANCE && <div className="max-w-4xl mx-auto space-y-8"><TimeClock currentUser={currentUser} locations={locations} onPunch={(e) => addDoc(collection(db, 'pontos'), e)} onGoToProfile={() => setActiveTab(AppTab.PROFILE)} /><div className="bg-white rounded-[2rem] border overflow-hidden shadow-sm"><div className="p-6 border-b font-bold text-slate-800 flex items-center gap-2"><Clock size={18} className="text-amber-500" /> Registros de Ponto</div><AttendanceLog logs={attendance.filter(l => l.employeeId === currentUser.id)} /></div></div>}
-            {activeTab === AppTab.REPORTS && <AttendanceReports logs={attendance} users={users} tasks={tasks} locations={locations} onSaveLocation={handleSaveLocation} onDeleteLocation={handleDeleteLocation} versionInfo={versionData} />}
-            {activeTab === AppTab.USERS && <UserManagement users={users} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} onAddUser={(u) => setDoc(doc(db, 'users', u.id), u)} onDeleteUser={(id) => updateDoc(doc(db, 'users', id), { active: false })} />}
+            {activeTab === AppTab.REPORTS && <AttendanceReports logs={attendance} users={users} tasks={tasks} locations={locations} onSaveLocation={handleSaveLocation} onDeleteLocation={handleDeleteLocation} onDeleteAttendance={handleDeleteAttendance} versionInfo={versionData} />}
+            {activeTab === AppTab.USERS && <UserManagement users={users} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} onAddUser={(u) => setDoc(doc(db, 'users', u.id), u)} onDeleteUser={handleDeleteUser} />}
             {activeTab === AppTab.PROFILE && <UserProfile user={currentUser} tasks={tasks} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} />}
           </div>
           <footer className="mt-12 py-6 border-t border-slate-200 flex flex-col items-center gap-1 opacity-40"><p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Portão da Cerveja &copy; 2026</p><div className="flex items-center gap-2 text-[9px] font-bold text-amber-600 uppercase"><Cpu size={10} /><span>Versão {versionData.version}</span></div></footer>
