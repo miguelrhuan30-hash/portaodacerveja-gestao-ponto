@@ -7,7 +7,8 @@ interface KanbanBoardProps {
   tasks: Task[];
   users: SystemUser[];
   onAddTask: (task: Task) => void;
-  onUpdateStatus: (taskId: string, status: TaskStatus, evidencePhotos?: {requirementId: string, title: string, data: string}[]) => Promise<void>;
+  // Alterado para esperar um retorno de IDs (string[]) das fotos que deram certo
+  onUpdateStatus: (taskId: string, status: TaskStatus, evidencePhotos?: {requirementId: string, title: string, data: string}[]) => Promise<string[]>;
   onDeleteTask: (id: string, mode: 'SINGLE' | 'RECURRING') => void;
   currentUser: SystemUser;
 }
@@ -113,10 +114,19 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
     if (!selectedTask || pendingPhotos.length === 0) return;
     setIsUploading(true);
     try {
-      // Salva fotos mantendo o status atual
-      await onUpdateStatus(selectedTask.id, selectedTask.status, pendingPhotos);
-      setPendingPhotos([]); // Limpa pendentes pois foram salvas
-      // O useEffect cuidará de atualizar o selectedTask com as novas URLs vindas do servidor
+      // Recebe a lista de IDs que foram salvos com sucesso
+      const successfulIds = await onUpdateStatus(selectedTask.id, selectedTask.status, pendingPhotos);
+      
+      // Remove da lista de pendentes APENAS o que foi salvo
+      setPendingPhotos(prev => prev.filter(p => !successfulIds.includes(p.requirementId)));
+      
+      if (successfulIds.length > 0 && successfulIds.length < pendingPhotos.length) {
+         // Se salvou algumas mas não todas
+         alert("Algumas fotos não foram salvas. Verifique as pendências e tente novamente.");
+      } else if (successfulIds.length === 0 && pendingPhotos.length > 0) {
+         // Se não salvou nada
+         alert("Nenhuma foto foi salva. Tente novamente.");
+      }
     } catch (e: any) {
       alert("Erro ao salvar fotos: " + e.message);
     } finally {
@@ -127,10 +137,9 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
   const handleFinishTask = async () => {
     if (!selectedTask) return;
     
-    // Verifica se ainda há fotos pendentes de upload no state local
     const photosToUpload = pendingPhotos.length > 0 ? pendingPhotos : undefined;
 
-    // Validação básica: se exige foto, deve ter ou no servidor ou pendente
+    // Validação básica
     if (selectedTask.requirePhoto && selectedTask.photoRequirements) {
        const serverEvidenceIds = selectedTask.evidences?.map(e => e.requirementId) || [];
        const pendingEvidenceIds = pendingPhotos.map(p => p.requirementId);
@@ -145,9 +154,20 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
 
     setIsUploading(true);
     try {
-      await onUpdateStatus(selectedTask.id, 'CONCLUIDA', photosToUpload);
-      setSelectedTask(null);
-      setPendingPhotos([]);
+      const successfulIds = await onUpdateStatus(selectedTask.id, 'CONCLUIDA', photosToUpload);
+      
+      // Limpa as que subiram
+      if (photosToUpload) {
+          setPendingPhotos(prev => prev.filter(p => !successfulIds.includes(p.requirementId)));
+      }
+      
+      // Se era para concluir e sobraram fotos pendentes (falha no upload), a tarefa provavelmente não concluiu (depende da lógica do App.tsx)
+      // Mas visualmente limpamos o selectedTask apenas se tudo ok ou se o usuário fechar
+      // Se o status mudou para concluída (via useEffect), o modal fecha ou atualiza
+      if (!photosToUpload || successfulIds.length === photosToUpload.length) {
+          setSelectedTask(null);
+          setPendingPhotos([]);
+      }
     } catch (e: any) {
       alert("Erro ao finalizar: " + e.message);
     } finally {

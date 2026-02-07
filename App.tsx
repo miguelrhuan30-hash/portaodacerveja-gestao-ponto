@@ -125,7 +125,10 @@ const App: React.FC = () => {
     };
   }, [logError]);
 
-  const handleUpdateTaskStatus = async (id: string, status: TaskStatus, evidencePhotos?: {requirementId: string, title: string, data: string}[]) => {
+  // Retorna os IDs dos requisitos de foto salvos com sucesso
+  const handleUpdateTaskStatus = async (id: string, status: TaskStatus, evidencePhotos?: {requirementId: string, title: string, data: string}[]) : Promise<string[]> => {
+    const successfulUploadIds: string[] = [];
+    
     try { 
       const taskRef = doc(db, 'tasks', id);
       const taskSnap = await getDoc(taskRef);
@@ -135,49 +138,66 @@ const App: React.FC = () => {
 
       let updates: Partial<Task> = { status };
       
-      // Só atualiza a data de conclusão se estiver mudando para CONCLUIDA e já não estava concluída
       if (status === 'CONCLUIDA' && currentTaskData.status !== 'CONCLUIDA') {
         updates.completedAt = Date.now();
         updates.archived = false; 
       }
 
+      // Preparação para processar evidências existentes
+      const evidenceMap = new Map<string, TaskEvidence>();
+      const existingEvidences: TaskEvidence[] = currentTaskData.evidences || [];
+      existingEvidences.forEach(ev => evidenceMap.set(ev.requirementId, ev));
+
       if (evidencePhotos && evidencePhotos.length > 0) {
-        // Upload Paralelo
+        // Upload sequencial/paralelo com tratamento de erro individual
         const uploadPromises = evidencePhotos.map(async (photo) => {
           const fileName = `tasks/${id}/ev_${photo.requirementId}_${Date.now()}.jpg`;
           const storageRef = ref(storage, fileName);
           
           try {
+            // Verifica integridade básica do Base64
+            if (!photo.data.includes('base64,')) {
+                console.warn(`Formato de imagem inválido para ${photo.title}`);
+                throw new Error("Formato inválido");
+            }
+
             await uploadString(storageRef, photo.data, 'data_url', { contentType: 'image/jpeg' });
             const url = await getDownloadURL(storageRef);
-            return { requirementId: photo.requirementId, title: photo.title, url };
+            
+            // Adiciona aos IDs de sucesso
+            successfulUploadIds.push(photo.requirementId);
+            
+            return { 
+                success: true, 
+                evidence: { requirementId: photo.requirementId, title: photo.title, url } as TaskEvidence 
+            };
           } catch (storageError: any) {
             console.error(`Erro ao subir imagem ${photo.title}:`, storageError);
-            throw new Error(`Falha no upload da imagem "${photo.title}".`);
+            alert(`Falha ao salvar a foto: "${photo.title}". Verifique sua conexão e tente novamente.`);
+            return { success: false };
           }
         });
 
-        const newEvidences = await Promise.all(uploadPromises);
+        const results = await Promise.all(uploadPromises);
         
-        // Mesclar com evidências existentes
-        const existingEvidences: TaskEvidence[] = currentTaskData.evidences || [];
-        
-        // Criar um mapa das evidências novas para fácil substituição
-        const evidenceMap = new Map<string, TaskEvidence>();
-        
-        // Adicionar existentes ao mapa
-        existingEvidences.forEach(ev => evidenceMap.set(ev.requirementId, ev));
-        
-        // Sobrescrever/Adicionar novas
-        newEvidences.forEach(ev => evidenceMap.set(ev.requirementId, ev));
+        // Adiciona ao mapa apenas os sucessos
+        results.forEach(res => {
+            if (res.success && res.evidence) {
+                evidenceMap.set(res.evidence.requirementId, res.evidence);
+            }
+        });
         
         updates.evidences = Array.from(evidenceMap.values());
       }
       
-      await updateDoc(taskRef, updates); 
+      await updateDoc(taskRef, updates);
+      
+      return successfulUploadIds;
+
     } catch(e: any) { 
       console.error("Falha ao atualizar tarefa:", e);
-      throw e; 
+      alert("Erro crítico ao salvar tarefa: " + e.message);
+      return []; // Retorna lista vazia em caso de erro crítico na tarefa
     }
   };
 
