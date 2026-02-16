@@ -1,8 +1,10 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, MapPin, CheckCircle2, RefreshCw, Clock, AlertTriangle, ArrowRight, ScanFace, ShieldCheck, X, Satellite, RotateCcw, Map as MapIcon, ExternalLink, Ruler, LogOut, LogIn } from 'lucide-react';
+import { Camera, MapPin, CheckCircle2, RefreshCw, Clock, AlertTriangle, ArrowRight, ScanFace, ShieldCheck, X, Satellite, RotateCcw, Map as MapIcon, ExternalLink, Ruler, LogOut, LogIn, Lock } from 'lucide-react';
 import { AttendanceEntry, SystemUser, BranchLocation } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../firebase';
 
 interface TimeClockProps {
   currentUser: SystemUser;
@@ -10,9 +12,10 @@ interface TimeClockProps {
   lastEntry: AttendanceEntry | null;
   onPunch: (entry: AttendanceEntry) => void;
   onGoToProfile: () => void;
+  onRequestCashOpen?: () => void; // Callback para redirecionar para o caixa
 }
 
-const TimeClock: React.FC<TimeClockProps> = ({ currentUser, locations, lastEntry, onPunch, onGoToProfile }) => {
+const TimeClock: React.FC<TimeClockProps> = ({ currentUser, locations, lastEntry, onPunch, onGoToProfile, onRequestCashOpen }) => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [photo, setPhoto] = useState<string | null>(null);
   const [currentPos, setCurrentPos] = useState<{ lat: number; lng: number } | null>(null);
@@ -235,6 +238,30 @@ const TimeClock: React.FC<TimeClockProps> = ({ currentUser, locations, lastEntry
       return;
     }
 
+    // --- BLOQUEIO DE CAIXA (NOVO) ---
+    // Se for SAIDA e o usuário tiver permissão de caixa, verificar se há sessão aberta
+    if (punchType === 'SAIDA' && currentUser.permissions.canManageCash) {
+       setStatus('PROCESSING');
+       setAnalysisSteps("Verificando caixa...");
+       
+       const q = query(
+          collection(db, 'cash_sessions'),
+          where('userId', '==', currentUser.id),
+          where('status', '==', 'OPEN')
+       );
+       const snapshot = await getDocs(q);
+       
+       if (!snapshot.empty) {
+          setStatus('ERROR');
+          setErrorMsg("CAIXA ABERTO! Feche o caixa antes de sair.");
+          if (confirm("⚠️ Você possui um caixa aberto! É necessário realizar o fechamento do caixa antes de bater a saída.\n\nDeseja ir para o fechamento agora?")) {
+             onRequestCashOpen?.();
+          }
+          setPhoto(null);
+          return;
+       }
+    }
+
     setStatus('PROCESSING');
     const validation = await performFaceValidation(photo);
 
@@ -263,7 +290,18 @@ const TimeClock: React.FC<TimeClockProps> = ({ currentUser, locations, lastEntry
     });
     
     setStatus('SUCCESS');
-    setTimeout(() => { setStatus('IDLE'); setPhoto(null); }, 3000);
+    
+    // Feedback e Redirecionamento Pós-Entrada para Operadores de Caixa
+    if (punchType === 'ENTRADA' && currentUser.permissions.canManageCash) {
+       setTimeout(() => {
+          if(confirm("Ponto registrado. Deseja realizar a abertura do caixa agora?")) {
+             onRequestCashOpen?.();
+          }
+          setStatus('IDLE'); setPhoto(null);
+       }, 1000);
+    } else {
+       setTimeout(() => { setStatus('IDLE'); setPhoto(null); }, 3000);
+    }
   };
 
   const isLocationValid = nearestLocation && minDistance !== null && minDistance <= nearestLocation.radius;

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Calendar as CalendarIcon, Users, Clock, History, CheckCircle2, AlertCircle, Archive, Trash2, TrendingUp, Search, Grid, List, ChevronLeft, ChevronRight, MapPin, Save, ShieldCheck, RefreshCw, X, MapPinned, ArrowDownLeft, ArrowUpRight, Edit3, Plus, LogOut, FileText, UploadCloud, AlertTriangle, Image as ImageIcon, Scale, CircleDollarSign } from 'lucide-react';
+import { Calendar as CalendarIcon, Users, Clock, History, CheckCircle2, AlertCircle, Archive, Trash2, TrendingUp, Search, Grid, List, ChevronLeft, ChevronRight, MapPin, Save, ShieldCheck, RefreshCw, X, MapPinned, ArrowDownLeft, ArrowUpRight, Edit3, Plus, LogOut, FileText, UploadCloud, AlertTriangle, Image as ImageIcon, Scale, CircleDollarSign, ArrowRightLeft, Paperclip } from 'lucide-react';
 import { AttendanceEntry, SystemUser, BranchLocation, Task, TaskStatus } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -30,8 +30,13 @@ interface DailyReportRow {
   totalWorkedHours: number; // Decimal
   expectedHours: number; // Decimal
   balance: number; // Decimal
-  status: 'OK' | 'MISSING_OUT' | 'ABSENT' | 'OFF_DAY';
-  isExtraShift?: boolean; // Novo campo para controle de turno extra
+  status: 'OK' | 'MISSING_OUT' | 'ABSENT' | 'OFF_DAY' | 'JUSTIFIED_ABSENCE' | 'UNJUSTIFIED_ABSENCE';
+  isExtraShift?: boolean; 
+  isCompensation?: boolean; // É um dia de compensação (trabalho por troca)
+  isDiluted?: boolean; // É um dia com horas diluídas
+  isReallocatedOff?: boolean; // É uma folga realocada
+  linkedDate?: string;
+  attachmentUrl?: string; // Para atestados
 }
 
 const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, tasks, locations, onSaveLocation, onDeleteLocation, onDeleteAttendance, versionInfo, currentUser }) => {
@@ -161,13 +166,20 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
             let expectedHours = 0;
             let isWorkDay = false;
             let isExtraShift = false;
+            let isCompensation = false;
+            let isDiluted = false;
+            let isReallocatedOff = false;
+            let linkedDate = undefined;
+            let isAbsence = false;
+            let absenceType: 'JUSTIFIED' | 'UNJUSTIFIED' | undefined = undefined;
+            let attachmentUrl = undefined;
             
             // PRIORIDADE 1: Verificar Exceções de Escala (Criadas no ScheduleManager)
             const exception = user.workSchedule?.monthlyExceptions?.find(e => e.date === currentDayStr);
 
             if (exception) {
-                 // Se existe exceção, ela manda (seja Trabalho ou Folga)
-                 if (exception.type === 'WORK' && exception.start && exception.end) {
+                 // Trata WORK e COMPENSATION como dias de trabalho
+                 if ((exception.type === 'WORK' || exception.type === 'COMPENSATION') && exception.start && exception.end) {
                       const [h1, m1] = exception.start.split(':').map(Number);
                       const [h2, m2] = exception.end.split(':').map(Number);
                       let diff = (h2 + m2/60) - (h1 + m1/60);
@@ -175,14 +187,55 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                       expectedHours = diff - ((exception.breakDuration || 60) / 60); // Default break 60 se não definido
                       isWorkDay = true;
                       
-                      // Check de Turno Extra
-                      if (exception.isExtraShift) {
-                          isExtraShift = true;
+                      // Check de Turno Extra/Compensação
+                      if (exception.isExtraShift) isExtraShift = true;
+                      if (exception.type === 'COMPENSATION') { isCompensation = true; linkedDate = exception.linkedDate; }
+                      if (exception.isDilutedCompensation) isDiluted = true;
+
+                 } else if (exception.type === 'ABSENCE') {
+                      isAbsence = true;
+                      absenceType = exception.absenceType;
+                      attachmentUrl = exception.attachmentUrl;
+                      
+                      if (absenceType === 'UNJUSTIFIED') {
+                          // Falta Injustificada: Precisamos saber qual ERA a carga horária original para debitar
+                          // Tenta buscar no weekDayConfig ou default
+                          let originalLoad = 8; // Default
+                          if (user.workSchedule?.type === 'FIXED' && user.workSchedule.weekDayConfig) {
+                              const cfg = user.workSchedule.weekDayConfig[dayOfWeek];
+                              if (cfg && cfg.enabled) {
+                                  const [h1, m1] = cfg.start.split(':').map(Number);
+                                  const [h2, m2] = cfg.end.split(':').map(Number);
+                                  let diff = (h2 + m2/60) - (h1 + m1/60);
+                                  if(diff < 0) diff += 24;
+                                  originalLoad = diff - (cfg.breakDuration / 60);
+                              }
+                          } else if (user.workSchedule?.dailyHours) {
+                              originalLoad = user.workSchedule.dailyHours;
+                          }
+                          expectedHours = originalLoad;
+                          isWorkDay = true; // Para gerar saldo negativo
+                      } else {
+                          // Falta Justificada: Abona
+                          expectedHours = 0;
+                          isWorkDay = false; 
                       }
+
                  } else {
-                      // Se for OFF na exceção, meta é 0
-                      expectedHours = 0;
-                      isWorkDay = false;
+                      // Se for OFF na exceção
+                      // LÓGICA NOVA: Se tiver deductFromBank, mantemos a expectativa original para gerar débito
+                      if (exception.deductFromBank) {
+                          expectedHours = exception.originalDuration || 8; 
+                          isWorkDay = true; // Marcamos como dia de trabalho "lógico" para que apareça como ABSENT se não trabalhar (débito)
+                      } else {
+                          expectedHours = 0;
+                          isWorkDay = false;
+                          // Se tiver linkedDate e for OFF, é uma folga realocada
+                          if (exception.linkedDate) {
+                              isReallocatedOff = true;
+                              linkedDate = exception.linkedDate;
+                          }
+                      }
                  }
             } 
             // PRIORIDADE 2: Configuração Padrão (Se não houver exceção)
@@ -222,6 +275,9 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
             // Status
             let status: DailyReportRow['status'] = 'OK';
             if (hasOpenPair) status = 'MISSING_OUT';
+            else if (isAbsence) {
+                status = absenceType === 'UNJUSTIFIED' ? 'UNJUSTIFIED_ABSENCE' : 'JUSTIFIED_ABSENCE';
+            }
             else if (totalWorkedHours === 0 && isWorkDay) {
                  const todayStr = getLocalKey(new Date());
                  // Se é hoje e ainda não trabalhou, ok. Se é passado, falta.
@@ -230,11 +286,11 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                 status = 'OFF_DAY';
             }
 
-            // Exibe se tiver registro OU se for falta/dia de trabalho
+            // Exibe se tiver registro OU se for falta/dia de trabalho OU se for Folga Realocada (para visualização)
             // Filtra dias futuros vazios
             const isFuture = d.getTime() > new Date().getTime();
             
-            if (!isFuture && (dayPairs.length > 0 || (isWorkDay && status === 'ABSENT') || status === 'MISSING_OUT')) {
+            if (!isFuture && (dayPairs.length > 0 || (isWorkDay && status === 'ABSENT') || status === 'MISSING_OUT' || isReallocatedOff || isCompensation || isAbsence)) {
                 rows.push({
                     dateObj: new Date(currentDayDate),
                     dateStr: currentDayDate.toLocaleDateString('pt-BR'),
@@ -245,7 +301,12 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                     expectedHours,
                     balance,
                     status,
-                    isExtraShift // Passa a flag para renderização
+                    isExtraShift,
+                    isCompensation,
+                    isDiluted,
+                    isReallocatedOff,
+                    linkedDate,
+                    attachmentUrl
                 });
             }
         });
@@ -267,7 +328,7 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
             totalBalance += row.balance;
         }
         if (row.status === 'MISSING_OUT') missingOutCount++;
-        if (row.status === 'ABSENT') absentCount++;
+        if (row.status === 'ABSENT' || row.status === 'UNJUSTIFIED_ABSENCE') absentCount++;
     });
 
     return { totalBalance, missingOutCount, absentCount };
@@ -425,12 +486,15 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                  <tbody className="divide-y divide-slate-100">
                    {dailyReports.map((row, idx) => {
                      const hasOpenPair = row.pairs.some(p => !p.out);
+                     const isCompRow = row.isCompensation || row.isReallocatedOff;
+                     const isAbsence = row.status === 'JUSTIFIED_ABSENCE' || row.status === 'UNJUSTIFIED_ABSENCE';
                      
                      return (
-                     <tr key={idx} className={`hover:bg-slate-50/50 group ${row.status === 'MISSING_OUT' ? 'bg-amber-50/50' : row.status === 'ABSENT' ? 'bg-rose-50/20' : ''}`}>
+                     <tr key={idx} className={`hover:bg-slate-50/50 group ${row.status === 'MISSING_OUT' ? 'bg-amber-50/50' : (row.status === 'ABSENT' || row.status === 'UNJUSTIFIED_ABSENCE') ? 'bg-rose-50/20' : ''} ${isCompRow ? 'bg-orange-50/30' : ''} ${row.status === 'JUSTIFIED_ABSENCE' ? 'bg-teal-50/30' : ''}`}>
                        <td className="px-6 py-4">
                           <span className="font-bold text-slate-600 block">{row.dateStr}</span>
                           <span className="text-[9px] text-slate-400 uppercase">{row.dateObj.toLocaleDateString('pt-BR', { weekday: 'short' })}</span>
+                          {row.isReallocatedOff && <span className="text-[8px] bg-slate-200 px-1 rounded mt-1 inline-block">Folga Realocada</span>}
                        </td>
                        <td className="px-6 py-4 font-bold text-slate-800">{row.employeeName}</td>
                        <td className="px-6 py-4">
@@ -448,7 +512,17 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                                       </span>
                                    ) : <span className="text-rose-500 font-bold">???</span>}
                                 </div>
-                             )}) : <span className="text-slate-400 italic">Sem registros</span>}
+                             )}) : <span className="text-slate-400 italic">
+                                {isAbsence ? (
+                                    <span className={`px-2 py-1 rounded text-[9px] font-black uppercase flex items-center gap-1 w-fit ${row.status === 'UNJUSTIFIED_ABSENCE' ? 'bg-rose-100 text-rose-700' : 'bg-teal-100 text-teal-700'}`}>
+                                        <AlertTriangle size={10}/>
+                                        {row.status === 'UNJUSTIFIED_ABSENCE' ? 'Falta Injustificada' : 'Atestado / Justificada'}
+                                        {row.attachmentUrl && (
+                                            <a href={row.attachmentUrl} target="_blank" rel="noreferrer" className="ml-1 text-teal-600 hover:text-teal-800"><Paperclip size={10}/></a>
+                                        )}
+                                    </span>
+                                ) : row.isReallocatedOff ? 'Folga Programada' : 'Sem registros'}
+                             </span>}
                           </div>
                        </td>
                        <td className="px-6 py-4 font-bold text-slate-700">
@@ -462,12 +536,23 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                              <span className="text-[9px] font-black bg-purple-100 text-purple-700 px-2 py-1 rounded-full uppercase border border-purple-200 flex items-center w-fit gap-1">
                                 <CircleDollarSign size={10}/> PAGO À PARTE
                              </span>
+                          ) : row.isCompensation ? (
+                             <span className="text-[9px] font-black bg-orange-100 text-orange-700 px-2 py-1 rounded-full uppercase border border-orange-200 flex items-center w-fit gap-1">
+                                <ArrowRightLeft size={10}/> COMPENSAÇÃO
+                             </span>
                           ) : row.status === 'MISSING_OUT' ? (
                              <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-2 py-1 rounded-full uppercase">Ponto Aberto</span>
                           ) : (
-                             <span className={`font-black ${row.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                                {row.balance > 0 ? '+' : ''}{formatDecimalHours(row.balance)}
-                             </span>
+                             <div className="flex flex-col items-start">
+                                <span className={`font-black ${row.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                    {row.balance > 0 ? '+' : ''}{formatDecimalHours(row.balance)}
+                                </span>
+                                {row.isDiluted && (
+                                    <span className="text-[8px] bg-emerald-50 text-emerald-600 px-1 rounded border border-emerald-100 mt-0.5">
+                                        Inclui Compensação
+                                    </span>
+                                )}
+                             </div>
                           )}
                        </td>
                        <td className="px-6 py-4 text-right">

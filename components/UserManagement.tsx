@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { UserPlus, Shield, Mail, Trash2, Edit3, CheckCircle2, XCircle, Lock, Eye, EyeOff, X, Save, Clock, Power, Award, CalendarDays, Briefcase, ChevronDown, ChevronUp, Copy, Plus, AlertCircle } from 'lucide-react';
+import { UserPlus, Shield, Mail, Trash2, Edit3, CheckCircle2, XCircle, Lock, Eye, EyeOff, X, Save, Clock, Power, Award, CalendarDays, Briefcase, ChevronDown, ChevronUp, Copy, Plus, AlertCircle, DollarSign } from 'lucide-react';
 import { SystemUser, PermissionSet, WorkSchedule, DaySchedule, ScheduleException } from '../types';
 
 interface UserManagementProps {
@@ -142,7 +142,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onUpdateUser, on
         canRecordAttendance: true,
         canViewReports: formUser.role === 'ADMIN',
         canManageUsers: false,
-        canManageShortages: true
+        canManageShortages: true,
+        canManageCash: false
       }
     };
 
@@ -245,7 +246,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onUpdateUser, on
                     { key: 'canManageTasks', label: 'Tarefas' },
                     { key: 'canRecordAttendance', label: 'Ponto' },
                     { key: 'canViewReports', label: 'Gestão' },
-                    { key: 'canManageShortages', label: 'Estoque' }
+                    { key: 'canManageShortages', label: 'Estoque' },
+                    { key: 'canManageCash', label: 'Op. Caixa' }
                 ].map(p => (
                     <button
                     key={p.key}

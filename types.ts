@@ -103,15 +103,25 @@ export interface DaySchedule {
 export interface ScheduleException {
   id: string;
   date: string; // YYYY-MM-DD
-  type: 'OFF' | 'WORK';
+  type: 'OFF' | 'WORK' | 'COMPENSATION' | 'ABSENCE';
   note?: string; // Ex: "Troca de turno", "Feriado trabalhado"
-  // Se for WORK, define o horário específico desse dia:
+  // Se for WORK ou COMPENSATION, define o horário específico desse dia:
   start?: string;
   end?: string;
   breakDuration?: number;
   
-  // Novo Campo:
   isExtraShift?: boolean; // Se true, é pago à parte e ignora o banco de horas
+  deductFromBank?: boolean; // Se true (e type=OFF), desconta as horas originais do banco
+  originalDuration?: number; // Duração em horas que deveria ter sido trabalhada (para cálculo de débito)
+  
+  // Novos campos de rastreabilidade:
+  linkedDate?: string; // A data original da folga ou compensação
+  isDilutedCompensation?: boolean; // True se for horas picadas na semana
+
+  // Novos campos de Falta:
+  absenceType?: 'JUSTIFIED' | 'UNJUSTIFIED'; // Só preenchido se type === 'ABSENCE'
+  absenceReason?: string; // Motivo (ex: "Doença", "Atraso", "Sem justificativa")
+  attachmentUrl?: string; // URL da foto do atestado (para faltas justificadas)
 }
 
 export interface WorkSchedule {
@@ -139,12 +149,27 @@ export interface TimeBankTransaction {
   authorId: string; // Quem fez o ajuste
 }
 
+// Interface de Sessão de Caixa
+export interface CashSession {
+  id: string;
+  userId: string;
+  userName: string;
+  openTime: number; // Timestamp
+  closeTime?: number; // Timestamp
+  openValue: number; // Fundo de caixa
+  closeValue?: number; // Valor conferido no fechamento
+  salesDiff?: number; // Diferença (Fechamento - Abertura)
+  status: 'OPEN' | 'CLOSED';
+  notes?: string;
+}
+
 export interface PermissionSet {
   canManageTasks: boolean;
   canRecordAttendance: boolean;
   canViewReports: boolean;
   canManageUsers: boolean;
   canManageShortages: boolean;
+  canManageCash: boolean; // Nova permissão
 }
 
 export interface SystemUser {
@@ -170,5 +195,7 @@ export enum AppTab {
   USERS = 'equipe',
   PROFILE = 'perfil',
   SHORTAGE = 'estoque',
-  SCHEDULE = 'escala'
+  SCHEDULE = 'escala',
+  CASH = 'caixa',
+  FINANCIAL = 'financeiro'
 }
