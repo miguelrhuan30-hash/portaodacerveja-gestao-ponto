@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef } from 'react';
-import { Calendar as CalendarIcon, Users, Clock, History, CheckCircle2, AlertCircle, Archive, Trash2, TrendingUp, Search, Grid, List, ChevronLeft, ChevronRight, MapPin, Save, ShieldCheck, RefreshCw, X, MapPinned, ArrowDownLeft, ArrowUpRight, Edit3, Plus, LogOut, FileText, UploadCloud, AlertTriangle, Image as ImageIcon, Scale } from 'lucide-react';
+import { Calendar as CalendarIcon, Users, Clock, History, CheckCircle2, AlertCircle, Archive, Trash2, TrendingUp, Search, Grid, List, ChevronLeft, ChevronRight, MapPin, Save, ShieldCheck, RefreshCw, X, MapPinned, ArrowDownLeft, ArrowUpRight, Edit3, Plus, LogOut, FileText, UploadCloud, AlertTriangle, Image as ImageIcon, Scale, CircleDollarSign } from 'lucide-react';
 import { AttendanceEntry, SystemUser, BranchLocation, Task, TaskStatus } from '../types';
 import { GoogleGenAI, Type } from "@google/genai";
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -31,15 +31,22 @@ interface DailyReportRow {
   expectedHours: number; // Decimal
   balance: number; // Decimal
   status: 'OK' | 'MISSING_OUT' | 'ABSENT' | 'OFF_DAY';
+  isExtraShift?: boolean; // Novo campo para controle de turno extra
 }
 
 const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, tasks, locations, onSaveLocation, onDeleteLocation, onDeleteAttendance, versionInfo, currentUser }) => {
   const [activeSubTab, setActiveSubTab] = useState<'ponto' | 'historico' | 'produtividade'>('ponto');
   const [selectedUser, setSelectedUser] = useState<string | 'todos'>('todos');
   
-  // Estados de Filtro de Data (Unificados no Topo)
-  const [startDate, setStartDate] = useState<string>(new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  // Estados de Filtro de Data
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0]; // Inicializa com YYYY-MM-DD local (aproximado)
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
 
   // Modais
   const [editingLocation, setEditingLocation] = useState<BranchLocation | null>(null);
@@ -55,7 +62,15 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
   
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
-  // --- LÓGICA DE CÁLCULO DE PONTO E BANCO DE HORAS (SUPORTE MADRUGADA) ---
+  // --- HELPER: Gera chave YYYY-MM-DD baseada na hora LOCAL ---
+  const getLocalKey = (date: Date) => {
+    const y = date.getFullYear();
+    const m = (date.getMonth() + 1).toString().padStart(2, '0');
+    const d = date.getDate().toString().padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  // --- LÓGICA DE CÁLCULO DE PONTO E BANCO DE HORAS ---
   
   const dailyReports = useMemo(() => {
     // 1. Filtrar logs pelos usuários selecionados
@@ -65,14 +80,14 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
     // 2. Ordenar cronologicamente absoluto
     const sortedLogs = [...filteredLogs].sort((a, b) => a.timestamp - b.timestamp);
 
-    // 3. Agrupar por usuário para processar pares linearmente
+    // 3. Agrupar por usuário
     const userGroups: { [key: string]: AttendanceEntry[] } = {};
     sortedLogs.forEach(log => {
         if (!userGroups[log.employeeId]) userGroups[log.employeeId] = [];
         userGroups[log.employeeId].push(log);
     });
 
-    // 4. Formar pares de [Entrada, Saída?]
+    // 4. Formar pares [Entrada, Saída?] com chave de data LOCAL da ENTRADA
     const allPairs: { in: AttendanceEntry, out?: AttendanceEntry, dateKey: string }[] = [];
     
     Object.keys(userGroups).forEach(uid => {
@@ -84,48 +99,51 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                 if (currentIn) {
                     // Entrada sem saída prévia -> Fecha anterior como Aberto
                     const entryDate = new Date(currentIn.timestamp);
-                    const dateKey = entryDate.toLocaleDateString('en-CA'); // YYYY-MM-DD para facilitar filtro
+                    const dateKey = getLocalKey(entryDate);
                     allPairs.push({ in: currentIn, dateKey });
                 }
                 currentIn = log;
             } else if (log.type === 'SAIDA') {
                 if (currentIn) {
-                    // Par fechado corretamente (mesmo que seja no dia seguinte)
+                    // Par fechado
                     const entryDate = new Date(currentIn.timestamp);
-                    const dateKey = entryDate.toLocaleDateString('en-CA');
+                    const dateKey = getLocalKey(entryDate); // A chave é sempre baseada na ENTRADA
                     allPairs.push({ in: currentIn, out: log, dateKey });
                     currentIn = null;
                 }
-                // Saída órfã ignorada no cálculo
             }
         });
 
         // Sobrou uma entrada no final
         if (currentIn) {
             const entryDate = new Date(currentIn.timestamp);
-            const dateKey = entryDate.toLocaleDateString('en-CA');
+            const dateKey = getLocalKey(entryDate);
             allPairs.push({ in: currentIn, dateKey });
         }
     });
 
-    // 5. Gerar linhas do relatório baseado no range de datas selecionado
+    // 5. Gerar linhas do relatório iterando dia a dia no range selecionado
+    // Importante: Interpretar startDate/endDate como DATA LOCAL (00:00:00)
     const rows: DailyReportRow[] = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    start.setHours(0,0,0,0);
-    end.setHours(23,59,59,999);
+    
+    const [startY, startM, startD] = startDate.split('-').map(Number);
+    const startObj = new Date(startY, startM - 1, startD); // Mês começa em 0 no JS
+
+    const [endY, endM, endD] = endDate.split('-').map(Number);
+    const endObj = new Date(endY, endM - 1, endD);
+    endObj.setHours(23, 59, 59, 999);
 
     // Iterar dia a dia
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const currentDayStr = d.toLocaleDateString('en-CA'); // YYYY-MM-DD
-        const currentDayDate = new Date(d);
+    for (let d = new Date(startObj); d <= endObj; d.setDate(d.getDate() + 1)) {
+        const currentDayStr = getLocalKey(d); // YYYY-MM-DD Local
+        const currentDayDate = new Date(d); // Cópia para o objeto row
         const dayOfWeek = currentDayDate.getDay();
 
         targetUserIds.forEach(uid => {
             const user = users.find(u => u.id === uid);
             if (!user) return;
 
-            // Buscar pares que COMEÇARAM neste dia
+            // Busca pares cuja chave (data da entrada local) seja igual ao dia iterado
             const dayPairs = allPairs.filter(p => p.dateKey === currentDayStr && p.in.employeeId === uid);
 
             let totalWorkedHours = 0;
@@ -142,30 +160,37 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
             // Meta do dia
             let expectedHours = 0;
             let isWorkDay = false;
+            let isExtraShift = false;
             
-            // Lógica Avançada de Escala (Fixo vs Flexível)
-            if (user.workSchedule) {
+            // PRIORIDADE 1: Verificar Exceções de Escala (Criadas no ScheduleManager)
+            const exception = user.workSchedule?.monthlyExceptions?.find(e => e.date === currentDayStr);
+
+            if (exception) {
+                 // Se existe exceção, ela manda (seja Trabalho ou Folga)
+                 if (exception.type === 'WORK' && exception.start && exception.end) {
+                      const [h1, m1] = exception.start.split(':').map(Number);
+                      const [h2, m2] = exception.end.split(':').map(Number);
+                      let diff = (h2 + m2/60) - (h1 + m1/60);
+                      if(diff < 0) diff += 24; // Madrugada
+                      expectedHours = diff - ((exception.breakDuration || 60) / 60); // Default break 60 se não definido
+                      isWorkDay = true;
+                      
+                      // Check de Turno Extra
+                      if (exception.isExtraShift) {
+                          isExtraShift = true;
+                      }
+                 } else {
+                      // Se for OFF na exceção, meta é 0
+                      expectedHours = 0;
+                      isWorkDay = false;
+                 }
+            } 
+            // PRIORIDADE 2: Configuração Padrão (Se não houver exceção)
+            else if (user.workSchedule) {
                 if (user.workSchedule.type === 'FIXED' && user.workSchedule.weekDayConfig) {
                     // Escala Fixa
                     const dayConfig = user.workSchedule.weekDayConfig[dayOfWeek];
-                    
-                    // Verifica Exceções
-                    const exception = user.workSchedule.monthlyExceptions?.find(e => e.date === currentDayStr);
-                    
-                    if (exception) {
-                        if (exception.type === 'WORK' && exception.start && exception.end) {
-                             const [h1, m1] = exception.start.split(':').map(Number);
-                             const [h2, m2] = exception.end.split(':').map(Number);
-                             let diff = (h2 + m2/60) - (h1 + m1/60);
-                             if(diff < 0) diff += 24; // Madrugada
-                             expectedHours = diff - ((exception.breakDuration || 0) / 60);
-                             isWorkDay = true;
-                        } else {
-                             // OFF
-                             expectedHours = 0;
-                             isWorkDay = false;
-                        }
-                    } else if (dayConfig && dayConfig.enabled) {
+                    if (dayConfig && dayConfig.enabled) {
                         const [h1, m1] = dayConfig.start.split(':').map(Number);
                         const [h2, m2] = dayConfig.end.split(':').map(Number);
                         let diff = (h2 + m2/60) - (h1 + m1/60);
@@ -185,20 +210,31 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                 if (dayOfWeek >= 1 && dayOfWeek <= 5) { expectedHours = 8; isWorkDay = true; }
             }
 
-            const balance = totalWorkedHours - expectedHours;
+            // CÁLCULO DE SALDO
+            let balance = totalWorkedHours - expectedHours;
+
+            // REGRA ESPECIAL PARA TURNO EXTRA:
+            // Se for turno extra, o saldo do banco deve ser 0 (não impacta débito nem crédito)
+            if (isExtraShift) {
+                balance = 0;
+            }
 
             // Status
             let status: DailyReportRow['status'] = 'OK';
             if (hasOpenPair) status = 'MISSING_OUT';
             else if (totalWorkedHours === 0 && isWorkDay) {
-                 const isToday = new Date().toDateString() === currentDayDate.toDateString();
+                 const todayStr = getLocalKey(new Date());
                  // Se é hoje e ainda não trabalhou, ok. Se é passado, falta.
-                 status = isToday ? 'OK' : 'ABSENT';
+                 status = (currentDayStr === todayStr) ? 'OK' : 'ABSENT';
             } else if (!isWorkDay) {
                 status = 'OFF_DAY';
             }
 
-            if (dayPairs.length > 0 || (isWorkDay && status === 'ABSENT')) {
+            // Exibe se tiver registro OU se for falta/dia de trabalho
+            // Filtra dias futuros vazios
+            const isFuture = d.getTime() > new Date().getTime();
+            
+            if (!isFuture && (dayPairs.length > 0 || (isWorkDay && status === 'ABSENT') || status === 'MISSING_OUT')) {
                 rows.push({
                     dateObj: new Date(currentDayDate),
                     dateStr: currentDayDate.toLocaleDateString('pt-BR'),
@@ -208,7 +244,8 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                     totalWorkedHours,
                     expectedHours,
                     balance,
-                    status
+                    status,
+                    isExtraShift // Passa a flag para renderização
                 });
             }
         });
@@ -295,7 +332,6 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
   };
 
   const handleCreateLocation = async () => {
-      // (Lógica mantida do código original)
       if (!newLocation.name || !newLocation.lat || !newLocation.lng) return alert("Preencha os campos.");
       setIsSavingSettings(true);
       try {
@@ -368,7 +404,7 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
              </div>
           </div>
 
-          {/* Tabela de Espelho de Ponto (Reformulada) */}
+          {/* Tabela de Espelho de Ponto */}
           <div className="bg-white rounded-[2rem] border overflow-hidden shadow-sm">
              <div className="p-6 border-b font-black text-slate-800 text-sm flex items-center gap-2 uppercase tracking-tighter">
                 <Clock size={18} className="text-amber-500" /> Detalhe Diário
@@ -388,7 +424,6 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                  </thead>
                  <tbody className="divide-y divide-slate-100">
                    {dailyReports.map((row, idx) => {
-                     // Verifica explicitamente se existe algum par aberto nesta linha
                      const hasOpenPair = row.pairs.some(p => !p.out);
                      
                      return (
@@ -401,7 +436,7 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                        <td className="px-6 py-4">
                           <div className="space-y-1">
                              {row.pairs.length > 0 ? row.pairs.map((p, i) => {
-                                const isNextDay = p.out && new Date(p.out.timestamp).getDate() !== new Date(p.in.timestamp).getDate();
+                                const isNextDay = p.out && getLocalKey(new Date(p.out.timestamp)) !== getLocalKey(new Date(p.in.timestamp));
                                 return (
                                 <div key={i} className="flex items-center gap-1 text-[10px]">
                                    <span className="bg-emerald-100 text-emerald-700 px-1.5 rounded">{new Date(p.in.timestamp).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</span>
@@ -423,7 +458,11 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                           {formatDecimalHours(row.expectedHours)}
                        </td>
                        <td className="px-6 py-4">
-                          {row.status === 'MISSING_OUT' ? (
+                          {row.isExtraShift ? (
+                             <span className="text-[9px] font-black bg-purple-100 text-purple-700 px-2 py-1 rounded-full uppercase border border-purple-200 flex items-center w-fit gap-1">
+                                <CircleDollarSign size={10}/> PAGO À PARTE
+                             </span>
+                          ) : row.status === 'MISSING_OUT' ? (
                              <span className="text-[9px] font-black bg-amber-100 text-amber-700 px-2 py-1 rounded-full uppercase">Ponto Aberto</span>
                           ) : (
                              <span className={`font-black ${row.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -432,14 +471,12 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                           )}
                        </td>
                        <td className="px-6 py-4 text-right">
-                          {/* Botão de Encerrar aparece se houver par aberto OU status for explicitamente MISSING_OUT */}
                           {(hasOpenPair || row.status === 'MISSING_OUT') && (currentUser?.role === 'ADMIN' || currentUser?.role === 'MASTER') && (
                               <button 
                                 onClick={() => {
                                     const openPair = row.pairs.find(p => !p.out);
                                     if(openPair) {
                                        setForcedExitData({ openEntry: openPair.in });
-                                       // Sugerir hora atual
                                        const now = new Date(); now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
                                        setForcedTime(now.toISOString().slice(0, 16));
                                     }
@@ -458,7 +495,7 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
              </div>
           </div>
 
-          {/* Painel de Locais (Mantido no final da aba) */}
+          {/* Painel de Locais */}
           <div className="bg-white p-8 rounded-[2rem] border shadow-sm space-y-8">
              <div className="flex justify-between items-center">
                 <div>
@@ -467,7 +504,6 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                 </div>
              </div>
              
-             {/* Lista de Locais */}
              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {locations.map(loc => (
                    <div key={loc.id} className="p-4 border rounded-xl flex justify-between items-center hover:border-amber-400 group transition-all">
@@ -483,7 +519,6 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                 ))}
              </div>
              
-             {/* Painel Completo de Cadastro de Local */}
              <div className="pt-4 border-t">
                  <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-4">Cadastrar Novo Local</p>
                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
@@ -512,10 +547,8 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
       
       {editingLocation && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-             {/* Reutilizando estrutura do modal de edição existente */}
              <div className="bg-white rounded-[2rem] p-6 max-w-lg w-full">
                 <h3 className="text-lg font-black mb-4">Editar Local</h3>
-                {/* Inputs simplificados para brevidade */}
                 <input type="text" value={editingLocation.name} onChange={e => setEditingLocation({...editingLocation, name: e.target.value})} className="w-full p-3 border rounded-xl mb-2 font-bold"/>
                 <input type="number" step="any" value={editingLocation.lat} onChange={e => setEditingLocation({...editingLocation, lat: parseFloat(e.target.value)})} className="w-full p-3 border rounded-xl mb-2 font-bold"/>
                 <input type="number" step="any" value={editingLocation.lng} onChange={e => setEditingLocation({...editingLocation, lng: parseFloat(e.target.value)})} className="w-full p-3 border rounded-xl mb-4 font-bold"/>
@@ -527,7 +560,6 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
         </div>
       )}
 
-      {/* MODAL DE SAÍDA FORÇADA (Reutilizado) */}
       {forcedExitData && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
             <div className="bg-white rounded-[2rem] w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in-95">
@@ -556,7 +588,6 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                             <input 
                                 type="datetime-local" 
                                 value={forcedTime} 
-                                // Permite selecionar datas futuras ou o dia seguinte para turnos overnight
                                 min={new Date(forcedExitData.openEntry?.timestamp || 0).toISOString().slice(0, 16)}
                                 onChange={e => setForcedTime(e.target.value)} 
                                 className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 outline-none focus:ring-2 focus:ring-rose-500"

@@ -109,6 +109,9 @@ export interface ScheduleException {
   start?: string;
   end?: string;
   breakDuration?: number;
+  
+  // Novo Campo:
+  isExtraShift?: boolean; // Se true, é pago à parte e ignora o banco de horas
 }
 
 export interface WorkSchedule {
@@ -166,5 +169,6 @@ export enum AppTab {
   REPORTS = 'gestao',
   USERS = 'equipe',
   PROFILE = 'perfil',
-  SHORTAGE = 'estoque'
+  SHORTAGE = 'estoque',
+  SCHEDULE = 'escala'
 }

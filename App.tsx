@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Beer, ClipboardList, Clock, Calendar, Users as UsersIcon, LogOut, Menu, X, PackageSearch, AlertCircle, Cpu, Download, Lock } from 'lucide-react';
+import { Beer, ClipboardList, Clock, Calendar, Users as UsersIcon, LogOut, Menu, X, PackageSearch, AlertCircle, Cpu, Download, Lock, CalendarDays } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, setDoc, deleteDoc, getDocs, where, writeBatch, getDoc, increment } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
@@ -11,6 +11,7 @@ import UserManagement from './components/UserManagement';
 import UserProfile from './components/UserProfile';
 import AttendanceReports from './components/AttendanceReports';
 import ProductShortageComponent from './components/ProductShortage';
+import ScheduleManager from './components/ScheduleManager';
 import LoginView from './components/LoginView';
 import { AppTab, Task, AttendanceEntry, SystemUser, BranchLocation, ProductShortage, TaskStatus, TaskEvidence } from './types';
 import { versionData } from './version';
@@ -402,6 +403,7 @@ const App: React.FC = () => {
               <button onClick={() => { setActiveTab(AppTab.SHORTAGE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.SHORTAGE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><PackageSearch size={22} /> <span>Estoque</span></button>
               {currentUser.permissions.canRecordAttendance && <button onClick={() => { setActiveTab(AppTab.ATTENDANCE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.ATTENDANCE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><Clock size={22} /> <span>Ponto</span></button>}
               {currentUser.permissions.canViewReports && <button onClick={() => { setActiveTab(AppTab.REPORTS); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.REPORTS ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><Calendar size={22} /> <span>Gestão</span></button>}
+              <button onClick={() => { setActiveTab(AppTab.SCHEDULE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.SCHEDULE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><CalendarDays size={22} /> <span>Escala</span></button>
               {currentUser.permissions.canManageUsers && <button onClick={() => { setActiveTab(AppTab.USERS); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.USERS ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><UsersIcon size={22} /> <span>Equipe</span></button>}
             </>
           ) : (
@@ -458,6 +460,7 @@ const App: React.FC = () => {
             />}
             {activeTab === AppTab.ATTENDANCE && <div className="max-w-4xl mx-auto space-y-8"><TimeClock currentUser={currentUser} locations={locations} lastEntry={userLastEntry} onPunch={(e) => addDoc(collection(db, 'pontos'), e)} onGoToProfile={() => setActiveTab(AppTab.PROFILE)} /><div className="bg-white rounded-[2rem] border overflow-hidden shadow-sm"><div className="p-6 border-b font-bold text-slate-800 flex items-center gap-2"><Clock size={18} className="text-amber-500" /> Registros de Ponto</div><AttendanceLog logs={attendance.filter(l => l.employeeId === currentUser.id)} /></div></div>}
             {activeTab === AppTab.REPORTS && <AttendanceReports logs={attendance} users={users} tasks={tasks} locations={locations} onSaveLocation={handleSaveLocation} onDeleteLocation={handleDeleteLocation} onDeleteAttendance={handleDeleteAttendance} versionInfo={versionData} currentUser={currentUser} />}
+            {activeTab === AppTab.SCHEDULE && <ScheduleManager users={users} currentUser={currentUser} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} />}
             {activeTab === AppTab.USERS && <UserManagement users={users} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} onAddUser={(u) => setDoc(doc(db, 'users', u.id), u)} onDeleteUser={handleDeleteUser} />}
             {activeTab === AppTab.PROFILE && <UserProfile user={currentUser} tasks={tasks} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} />}
           </div>
