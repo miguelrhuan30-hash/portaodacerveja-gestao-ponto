@@ -92,6 +92,49 @@ export interface AttendanceEntry {
   evidenceUrl?: string; // URL da foto da câmera/comprovante
 }
 
+export interface DaySchedule {
+  enabled: boolean; // Se false, é folga fixa (ex: Domingo)
+  start: string; // "08:00"
+  end: string;   // "17:00"
+  breakDuration: number; // Minutos de intervalo (ex: 60)
+}
+
+export interface ScheduleException {
+  id: string;
+  date: string; // YYYY-MM-DD
+  type: 'OFF' | 'WORK';
+  note?: string; // Ex: "Troca de turno", "Feriado trabalhado"
+  // Se for WORK, define o horário específico desse dia:
+  start?: string;
+  end?: string;
+  breakDuration?: number;
+}
+
+export interface WorkSchedule {
+  type: 'FLEXIBLE' | 'FIXED';
+  
+  // Se FLEXIBLE:
+  dailyHours?: number; // Ex: 8h
+  weeklyHours?: number; // Ex: 44h
+  workDays?: number[]; // [0-6] (0=Domingo, 1=Segunda...)
+
+  // Se FIXED:
+  weekDayConfig?: Record<number, DaySchedule>; // 0 (Dom) a 6 (Sáb)
+  monthlyExceptions?: ScheduleException[]; // Lista de exceções pontuais
+  
+  flexible?: boolean; // Mantido para retrocompatibilidade visual
+}
+
+export interface TimeBankTransaction {
+  id: string;
+  userId: string;
+  date: number; // Timestamp
+  amount: number; // Horas em decimal (ex: 1.5 ou -2.0)
+  type: 'AUTO' | 'MANUAL_ADJUSTMENT' | 'PAYMENT';
+  description: string; // Ex: "Hora extra do dia 15" ou "Desconto em folha"
+  authorId: string; // Quem fez o ajuste
+}
+
 export interface PermissionSet {
   canManageTasks: boolean;
   canRecordAttendance: boolean;
@@ -109,7 +152,10 @@ export interface SystemUser {
   role: 'MASTER' | 'ADMIN' | 'EMPLOYEE';
   permissions: PermissionSet;
   active: boolean;
-  weeklyHoursGoal?: number;
+  weeklyHoursGoal?: number; // Deprecated em favor de workSchedule
+  workSchedule?: WorkSchedule;
+  timeBankBalance?: number; // Saldo atual acumulado (em horas decimais)
+  bankBalance?: number; // Saldo em minutos (backup/precisão)
   points: number;
 }
 
