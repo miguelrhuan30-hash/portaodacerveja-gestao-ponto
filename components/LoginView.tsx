@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { Beer, Mail, Lock, Eye, EyeOff, ArrowRight, Cpu } from 'lucide-react';
 import { versionData } from '../version';
+import SystemUpdater from './SystemUpdater';
 
 interface LoginViewProps {
   onLogin: (email: string, pass: string, remember: boolean) => void;
@@ -30,7 +31,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
       <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-amber-600/10 blur-[120px] rounded-full"></div>
       <div className="absolute bottom-[-10%] left-[-10%] w-[30%] h-[30%] bg-amber-400/10 blur-[100px] rounded-full"></div>
       
-      <div className="w-full max-w-md space-y-8 z-10">
+      <div className="w-full max-w-md space-y-8 z-10 flex flex-col items-center">
         {/* Logo Section */}
         <div className="text-center">
           <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-amber-600 shadow-2xl shadow-amber-900/50 mb-6 border border-amber-400/30">
@@ -41,7 +42,7 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
         </div>
 
         {/* Login Card */}
-        <div className="bg-white/95 backdrop-blur-md p-8 rounded-[2.5rem] shadow-2xl space-y-6">
+        <div className="bg-white/95 backdrop-blur-md p-8 rounded-[2.5rem] shadow-2xl space-y-6 w-full">
           <div className="space-y-2">
             <h2 className="text-xl font-bold text-slate-800">Bem-vindo de volta!</h2>
             <p className="text-slate-500 text-sm">Acesse sua conta para gerenciar as atividades da cervejaria.</p>
@@ -119,7 +120,10 @@ const LoginView: React.FC<LoginViewProps> = ({ onLogin }) => {
           </form>
         </div>
 
-        <div className="text-center space-y-2">
+        {/* Ferramenta de Atualização */}
+        <SystemUpdater />
+
+        <div className="text-center space-y-2 pb-8">
           <p className="text-amber-400/40 text-[10px] font-black uppercase tracking-widest">
             Copyright &copy; 2026 Portão da Cerveja
           </p>

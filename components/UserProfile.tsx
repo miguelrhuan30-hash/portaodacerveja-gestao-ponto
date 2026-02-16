@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Camera, Save, Lock, Mail, User, RefreshCw, CheckCircle, ShieldCheck, ScanFace, Info, X, Check, AlertCircle, TrendingUp, Target, Award, CheckCircle2 } from 'lucide-react';
 import { SystemUser, Task } from '../types';
+import SystemUpdater from './SystemUpdater';
 
 interface UserProfileProps {
   user: SystemUser;
@@ -121,6 +122,8 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, tasks, onUpdateUser }) 
           </button>
         </div>
       </div>
+
+      <SystemUpdater />
 
       {isCameraModalOpen && (
         <div className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-slate-950 p-4">
