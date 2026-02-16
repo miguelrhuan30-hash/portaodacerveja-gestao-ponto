@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { UserPlus, Shield, Mail, Trash2, Edit3, CheckCircle2, XCircle, Lock, Eye, EyeOff, X, Save, Clock, Power } from 'lucide-react';
+import { UserPlus, Shield, Mail, Trash2, Edit3, CheckCircle2, XCircle, Lock, Eye, EyeOff, X, Save, Clock, Power, Award } from 'lucide-react';
 import { SystemUser, PermissionSet } from '../types';
 
 interface UserManagementProps {
@@ -55,6 +55,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onUpdateUser, on
       role: newUser.role,
       active: true,
       weeklyHoursGoal: newUser.weeklyHoursGoal,
+      points: 0,
       permissions: {
         canManageTasks: newUser.role !== 'EMPLOYEE',
         canRecordAttendance: true,
@@ -97,7 +98,10 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onUpdateUser, on
               </div>
               <div className="truncate">
                 <h4 className="font-bold text-slate-800 truncate">{user.name}</h4>
-                <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                <div className="flex items-center gap-2">
+                   <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                   <span className="text-[10px] font-black bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-md flex items-center gap-1"><Award size={10}/> {user.points || 0} pts</span>
+                </div>
               </div>
             </div>
 

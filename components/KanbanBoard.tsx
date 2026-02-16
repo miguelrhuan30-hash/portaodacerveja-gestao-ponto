@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Plus, Clock, X, Check, Timer, TrendingUp, Camera, RefreshCw, Trash2, ListChecks, PlusCircle, Calendar as CalendarIcon, Grid, ChevronLeft, ChevronRight, Info, CheckCircle2, AlertCircle, CalendarDays, UploadCloud, Save, Image as ImageIcon, ExternalLink } from 'lucide-react';
+import { Plus, Clock, X, Check, Timer, TrendingUp, Camera, RefreshCw, Trash2, ListChecks, PlusCircle, Calendar as CalendarIcon, Grid, ChevronLeft, ChevronRight, Info, CheckCircle2, AlertCircle, CalendarDays, UploadCloud, Save, Image as ImageIcon, ExternalLink, Award, PartyPopper, ArrowRight } from 'lucide-react';
 import { Task, TaskStatus, SystemUser, RecurrenceType, TaskPhotoRequirement } from '../types';
 
 interface KanbanBoardProps {
@@ -20,6 +20,9 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [showCamera, setShowCamera] = useState<{ reqId: string, title: string } | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState<{ taskId: string, hasRecurrence: boolean } | null>(null);
+  
+  // Estado para Animação de Confete/Gamificação
+  const [showCelebration, setShowCelebration] = useState(false);
   
   // Estado local para fotos capturadas mas ainda não enviadas no modal de detalhes
   const [pendingPhotos, setPendingPhotos] = useState<{requirementId: string, title: string, data: string}[]>([]);
@@ -66,6 +69,18 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
     const total = userTasks.length;
     const integrity = total > 0 ? Math.max(0, ((total - expired) / total) * 100) : 100;
     return { done, expired, total, integrity };
+  }, [tasks, currentUser.id]);
+
+  // Identifica a próxima tarefa disponível para o usuário
+  const nextAvailableTask = useMemo(() => {
+    const now = Date.now();
+    return tasks
+      .filter(t => 
+        t.status === 'A_FAZER' && 
+        !t.archived && 
+        t.assignedUserIds.includes(currentUser.id)
+      )
+      .sort((a, b) => a.startDate - b.startDate)[0]; // Pega a mais antiga/prioritária
   }, [tasks, currentUser.id]);
 
   const initCamera = async () => {
@@ -167,6 +182,8 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
       if (!photosToUpload || successfulIds.length === photosToUpload.length) {
           setSelectedTask(null);
           setPendingPhotos([]);
+          // DISPARA CELEBRAÇÃO (Sem timeout automático, aguarda interação)
+          setShowCelebration(true);
       }
     } catch (e: any) {
       alert("Erro ao finalizar: " + e.message);
@@ -191,6 +208,16 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
   const handleTaskClick = (task: Task) => {
     setPendingPhotos([]);
     setSelectedTask(task);
+  };
+
+  const handleStartNextTask = () => {
+    if (nextAvailableTask) {
+      setShowCelebration(false);
+      // Pequeno delay para transição suave de modais
+      setTimeout(() => {
+        setSelectedTask(nextAvailableTask);
+      }, 100);
+    }
   };
 
   const handleCreateTask = (e: React.FormEvent) => {
@@ -500,6 +527,55 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
              </div>
           </div>
         </div>
+      )}
+
+      {/* OVERLAY DE CELEBRAÇÃO INTERATIVO (GAMIFICAÇÃO) */}
+      {showCelebration && (
+         <div className="fixed inset-0 z-[160] flex flex-col items-center justify-center">
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-500"></div>
+            <div className="relative bg-white p-10 md:p-12 rounded-[3rem] shadow-2xl flex flex-col items-center animate-in zoom-in-50 slide-in-from-bottom-20 duration-500 max-w-sm w-full mx-4 border-4 border-amber-500">
+               <div className="text-7xl mb-6 animate-bounce">🏆</div>
+               <h3 className="text-3xl font-black text-slate-800 uppercase text-center mb-2 leading-none">Excelente!</h3>
+               <div className="bg-amber-100 text-amber-800 px-6 py-2 rounded-full font-black text-xl border border-amber-200 shadow-inner flex items-center gap-2 mb-4">
+                  <Plus size={24}/> 1 Ponto
+               </div>
+               <p className="text-slate-400 text-sm font-bold uppercase tracking-widest text-center">Tarefa finalizada com sucesso.</p>
+
+               <div className="mt-8 w-full space-y-3 relative z-20">
+                  {nextAvailableTask ? (
+                    <button 
+                      onClick={handleStartNextTask}
+                      className="w-full py-4 bg-emerald-600 text-white rounded-2xl font-black text-lg uppercase shadow-xl hover:bg-emerald-700 active:scale-95 transition-all flex items-center justify-center gap-2 animate-pulse"
+                    >
+                      Próxima Tarefa <ArrowRight size={24}/>
+                    </button>
+                  ) : (
+                    <div className="p-4 bg-slate-50 rounded-2xl text-center border border-slate-100">
+                       <p className="text-xs font-bold text-slate-500 uppercase">Você zerou suas pendências!</p>
+                    </div>
+                  )}
+                  
+                  <button 
+                    onClick={() => setShowCelebration(false)}
+                    className="w-full py-4 bg-white text-slate-400 hover:text-slate-600 rounded-2xl font-bold uppercase text-xs border-2 border-transparent hover:border-slate-100 transition-all"
+                  >
+                    Voltar ao Quadro
+                  </button>
+               </div>
+               
+               {/* Efeito de Confete CSS Simples */}
+               <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-[3rem]">
+                  {[...Array(30)].map((_, i) => (
+                    <div key={i} className="absolute w-2 h-2 bg-amber-500 rounded-full animate-ping" style={{
+                       top: `${Math.random() * 100}%`,
+                       left: `${Math.random() * 100}%`,
+                       animationDelay: `${Math.random()}s`,
+                       animationDuration: '2s'
+                    }}/>
+                  ))}
+               </div>
+            </div>
+         </div>
       )}
 
       {/* Modal de Câmera */}

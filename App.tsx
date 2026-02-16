@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Beer, ClipboardList, Clock, Calendar, Users as UsersIcon, LogOut, Menu, X, PackageSearch, AlertCircle, Cpu, Download } from 'lucide-react';
-import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, setDoc, deleteDoc, getDocs, where, writeBatch, getDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Beer, ClipboardList, Clock, Calendar, Users as UsersIcon, LogOut, Menu, X, PackageSearch, AlertCircle, Cpu, Download, Lock } from 'lucide-react';
+import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, setDoc, deleteDoc, getDocs, where, writeBatch, getDoc, increment } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { db, storage } from './firebase';
 import KanbanBoard from './components/KanbanBoard';
@@ -39,6 +39,52 @@ const App: React.FC = () => {
     const message = error?.message || error?.code || "Erro desconhecido";
     console.error(`${title}:`, message);
   }, []);
+
+  // --- LÓGICA DE BLOQUEIO POR FALTA DE PONTO ---
+  const isAttendanceLocked = useMemo(() => {
+    if (!currentUser || currentUser.role !== 'EMPLOYEE') return false;
+
+    // Define o início do dia atual (00:00:00)
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    // Verifica se existe algum registro de 'ENTRADA' do usuário hoje
+    const hasClockedInToday = attendance.some(entry => 
+      entry.employeeId === currentUser.id && 
+      entry.type === 'ENTRADA' && 
+      entry.timestamp >= startOfDay.getTime()
+    );
+
+    // Se NÃO bateu ponto hoje, retorna TRUE (Bloqueado)
+    return !hasClockedInToday;
+  }, [currentUser, attendance]);
+
+  // Efeito para forçar a aba de Ponto se estiver bloqueado
+  useEffect(() => {
+    // Permite estar na aba de PONTO (para registrar) ou PERFIL (para cadastrar foto/biometria)
+    if (isAttendanceLocked && activeTab !== AppTab.ATTENDANCE && activeTab !== AppTab.PROFILE) {
+      setActiveTab(AppTab.ATTENDANCE);
+    }
+  }, [isAttendanceLocked, activeTab]);
+
+  // --- SINCRONIZAÇÃO EM TEMPO REAL DO USUÁRIO ATUAL ---
+  // Isso garante que se o usuário alterar a foto no perfil, o currentUser seja atualizado imediatamente
+  // corrigindo o erro de "Biometria Pendente" no ponto.
+  useEffect(() => {
+    if (currentUser && users.length > 0) {
+      const liveUserData = users.find(u => u.id === currentUser.id);
+      
+      // Se encontrou o usuário e houve mudança nos dados (ex: avatar novo)
+      if (liveUserData) {
+         // Usamos JSON.stringify para comparar profundamente e evitar loops infinitos se o objeto for idêntico
+         if (JSON.stringify(liveUserData) !== JSON.stringify(currentUser)) {
+            console.log("Sincronizando dados do usuário atual...");
+            setCurrentUser(liveUserData);
+         }
+      }
+    }
+  }, [users, currentUser]); // Executa sempre que a lista de usuários mudar ou o currentUser mudar
+  // -----------------------------------------------------
 
   useEffect(() => {
     // Listener para o evento de instalação PWA
@@ -87,22 +133,21 @@ const App: React.FC = () => {
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const usersData = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as SystemUser));
       if (usersData.length === 0) {
-        const master = {
+        const master: SystemUser = {
           id: 'master-001',
           name: 'Gestor Portão da Cerveja',
           email: 'portaodacerveja@portaodacerveja.com',
           password: 'gestor202017',
-          role: 'MASTER' as const,
+          role: 'MASTER',
           active: true,
+          points: 0,
           permissions: { canManageTasks: true, canRecordAttendance: true, canViewReports: true, canManageUsers: true, canManageShortages: true }
         };
         setDoc(doc(db, 'users', master.id), master).catch(e => logError("Erro Criar Master", e));
       } else {
         setUsers(usersData);
-        if (currentUser) {
-          const updatedMe = usersData.find(u => u.id === currentUser.id);
-          if (updatedMe) setCurrentUser(updatedMe);
-        }
+        // REMOVIDO A ATUALIZAÇÃO DO currentUser AQUI POIS ESTAVA CAUSANDO STALE STATE
+        // A lógica foi movida para o useEffect dedicado acima.
       }
       setIsInitializing(false);
     }, (err) => { logError("Erro Usuários", err); setIsInitializing(false); });
@@ -152,6 +197,13 @@ const App: React.FC = () => {
       if (status === 'CONCLUIDA' && currentTaskData.status !== 'CONCLUIDA') {
         updates.completedAt = Date.now();
         updates.archived = false; 
+        
+        // GAMIFICAÇÃO: Se o usuário atual estiver finalizando a tarefa, ele ganha ponto
+        if (currentUser) {
+          const userRef = doc(db, 'users', currentUser.id);
+          // Usa 'increment' do Firestore para garantir integridade e atomicidade
+          updateDoc(userRef, { points: increment(1) }).catch(err => console.error("Erro ao dar pontos", err));
+        }
       }
 
       // Preparação para processar evidências existentes
@@ -358,11 +410,25 @@ const App: React.FC = () => {
           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-amber-400"><X size={24} /></button>
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto scroll-hide">
-          {currentUser.permissions.canManageTasks && <button onClick={() => { setActiveTab(AppTab.BOARD); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.BOARD ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><ClipboardList size={22} /> <span>Tarefas</span></button>}
-          <button onClick={() => { setActiveTab(AppTab.SHORTAGE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.SHORTAGE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><PackageSearch size={22} /> <span>Estoque</span></button>
-          {currentUser.permissions.canRecordAttendance && <button onClick={() => { setActiveTab(AppTab.ATTENDANCE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.ATTENDANCE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><Clock size={22} /> <span>Ponto</span></button>}
-          {currentUser.permissions.canViewReports && <button onClick={() => { setActiveTab(AppTab.REPORTS); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.REPORTS ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><Calendar size={22} /> <span>Gestão</span></button>}
-          {currentUser.permissions.canManageUsers && <button onClick={() => { setActiveTab(AppTab.USERS); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.USERS ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><UsersIcon size={22} /> <span>Equipe</span></button>}
+          {/* SE ESTIVER BLOQUEADO POR FALTA DE PONTO, ESCONDE A NAVEGAÇÃO */}
+          {!isAttendanceLocked ? (
+            <>
+              {currentUser.permissions.canManageTasks && <button onClick={() => { setActiveTab(AppTab.BOARD); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.BOARD ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><ClipboardList size={22} /> <span>Tarefas</span></button>}
+              <button onClick={() => { setActiveTab(AppTab.SHORTAGE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.SHORTAGE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><PackageSearch size={22} /> <span>Estoque</span></button>
+              {currentUser.permissions.canRecordAttendance && <button onClick={() => { setActiveTab(AppTab.ATTENDANCE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.ATTENDANCE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><Clock size={22} /> <span>Ponto</span></button>}
+              {currentUser.permissions.canViewReports && <button onClick={() => { setActiveTab(AppTab.REPORTS); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.REPORTS ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><Calendar size={22} /> <span>Gestão</span></button>}
+              {currentUser.permissions.canManageUsers && <button onClick={() => { setActiveTab(AppTab.USERS); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.USERS ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><UsersIcon size={22} /> <span>Equipe</span></button>}
+            </>
+          ) : (
+             <button 
+               onClick={() => { setActiveTab(AppTab.ATTENDANCE); setIsSidebarOpen(false); }}
+               className="w-full bg-rose-500/20 p-4 rounded-2xl border border-rose-500/50 text-center space-y-2 hover:bg-rose-500/30 transition-colors cursor-pointer"
+             >
+                <Lock className="mx-auto text-rose-300 animate-pulse" size={32} />
+                <p className="text-xs font-black uppercase text-rose-200">Acesso Restrito</p>
+                <p className="text-[10px] text-amber-100/70 leading-tight">Clique aqui para registrar sua ENTRADA e liberar o sistema.</p>
+             </button>
+          )}
         </nav>
         
         {/* Rodapé da Sidebar */}
@@ -379,7 +445,13 @@ const App: React.FC = () => {
 
           <button onClick={() => { setActiveTab(AppTab.PROFILE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-all ${activeTab === AppTab.PROFILE ? 'bg-amber-800' : 'hover:bg-amber-900/50'}`}>
             <div className="w-10 h-10 rounded-full bg-amber-500 overflow-hidden flex items-center justify-center font-bold border-2 border-amber-400 shrink-0">{currentUser.avatar ? <img src={currentUser.avatar} className="w-full h-full object-cover scale-x-[-1]" /> : currentUser.name[0]}</div>
-            <div className="flex-1 text-left truncate"><p className="text-sm font-bold truncate">{currentUser.name}</p><p className="text-[10px] text-amber-400 font-medium uppercase">{currentUser.role === 'EMPLOYEE' ? 'Funcionário' : currentUser.role}</p></div>
+            <div className="flex-1 text-left truncate">
+              <p className="text-sm font-bold truncate">{currentUser.name}</p>
+              <div className="flex justify-between items-center">
+                <p className="text-[10px] text-amber-400 font-medium uppercase">{currentUser.role === 'EMPLOYEE' ? 'Funcionário' : currentUser.role}</p>
+                <span className="text-[10px] font-black bg-amber-900 px-1.5 rounded text-amber-200">★ {currentUser.points || 0}</span>
+              </div>
+            </div>
           </button>
         </div>
       </aside>
@@ -401,7 +473,7 @@ const App: React.FC = () => {
                 onDeleteShortage={handleDeleteShortage} 
             />}
             {activeTab === AppTab.ATTENDANCE && <div className="max-w-4xl mx-auto space-y-8"><TimeClock currentUser={currentUser} locations={locations} onPunch={(e) => addDoc(collection(db, 'pontos'), e)} onGoToProfile={() => setActiveTab(AppTab.PROFILE)} /><div className="bg-white rounded-[2rem] border overflow-hidden shadow-sm"><div className="p-6 border-b font-bold text-slate-800 flex items-center gap-2"><Clock size={18} className="text-amber-500" /> Registros de Ponto</div><AttendanceLog logs={attendance.filter(l => l.employeeId === currentUser.id)} /></div></div>}
-            {activeTab === AppTab.REPORTS && <AttendanceReports logs={attendance} users={users} tasks={tasks} locations={locations} onSaveLocation={handleSaveLocation} onDeleteLocation={handleDeleteLocation} onDeleteAttendance={handleDeleteAttendance} versionInfo={versionData} />}
+            {activeTab === AppTab.REPORTS && <AttendanceReports logs={attendance} users={users} tasks={tasks} locations={locations} onSaveLocation={handleSaveLocation} onDeleteLocation={handleDeleteLocation} onDeleteAttendance={handleDeleteAttendance} versionInfo={versionData} currentUser={currentUser} />}
             {activeTab === AppTab.USERS && <UserManagement users={users} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} onAddUser={(u) => setDoc(doc(db, 'users', u.id), u)} onDeleteUser={handleDeleteUser} />}
             {activeTab === AppTab.PROFILE && <UserProfile user={currentUser} tasks={tasks} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} />}
           </div>

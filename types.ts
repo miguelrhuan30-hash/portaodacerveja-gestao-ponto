@@ -77,7 +77,7 @@ export interface AttendanceEntry {
   employeeName: string;
   type: 'ENTRADA' | 'SAIDA';
   timestamp: number;
-  photoUrl: string;
+  photoUrl: string; // URL da selfie ou da evidência manual
   location: {
     lat: number;
     lng: number;
@@ -85,6 +85,11 @@ export interface AttendanceEntry {
     distanceFromBase?: number;
     locationName?: string;
   };
+  // Campos para Saída Forçada (Gestão)
+  isForced?: boolean;
+  forcedBy?: string; // ID do gestor
+  forcedReason?: string;
+  evidenceUrl?: string; // URL da foto da câmera/comprovante
 }
 
 export interface PermissionSet {
@@ -105,6 +110,7 @@ export interface SystemUser {
   permissions: PermissionSet;
   active: boolean;
   weeklyHoursGoal?: number;
+  points: number;
 }
 
 export enum AppTab {
