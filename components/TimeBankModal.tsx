@@ -31,13 +31,16 @@ const TimeBankModal: React.FC<TimeBankModalProps> = ({ user, currentUser, onClos
   useEffect(() => {
     const fetchTransactions = async () => {
       try {
+        // Query simplificada para evitar erro de índice composto (userId + date)
         const q = query(
           collection(db, 'time_bank_transactions'),
-          where('userId', '==', user.id),
-          orderBy('date', 'desc')
+          where('userId', '==', user.id)
         );
         const snapshot = await getDocs(q);
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as TimeBankTransaction));
+        const data = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() } as TimeBankTransaction))
+            .sort((a, b) => b.date - a.date); // Ordenação feita no cliente
+
         setTransactions(data);
       } catch (error) {
         console.error("Erro ao buscar transações:", error);

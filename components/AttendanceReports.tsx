@@ -390,7 +390,7 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                    {dailyReports.map((row, idx) => {
                      // Verifica explicitamente se existe algum par aberto nesta linha
                      const hasOpenPair = row.pairs.some(p => !p.out);
-
+                     
                      return (
                      <tr key={idx} className={`hover:bg-slate-50/50 group ${row.status === 'MISSING_OUT' ? 'bg-amber-50/50' : row.status === 'ABSENT' ? 'bg-rose-50/20' : ''}`}>
                        <td className="px-6 py-4">
@@ -432,7 +432,7 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
                           )}
                        </td>
                        <td className="px-6 py-4 text-right">
-                          {/* CORREÇÃO: Botão aparece se houver par aberto OU status for explicitamente MISSING_OUT */}
+                          {/* Botão de Encerrar aparece se houver par aberto OU status for explicitamente MISSING_OUT */}
                           {(hasOpenPair || row.status === 'MISSING_OUT') && (currentUser?.role === 'ADMIN' || currentUser?.role === 'MASTER') && (
                               <button 
                                 onClick={() => {

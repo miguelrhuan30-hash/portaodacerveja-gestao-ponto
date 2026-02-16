@@ -68,8 +68,6 @@ const App: React.FC = () => {
   }, [isAttendanceLocked, activeTab]);
 
   // --- SINCRONIZAÇÃO EM TEMPO REAL DO USUÁRIO ATUAL ---
-  // Isso garante que se o usuário alterar a foto no perfil, o currentUser seja atualizado imediatamente
-  // corrigindo o erro de "Biometria Pendente" no ponto.
   useEffect(() => {
     if (currentUser && users.length > 0) {
       const liveUserData = users.find(u => u.id === currentUser.id);
@@ -83,8 +81,15 @@ const App: React.FC = () => {
          }
       }
     }
-  }, [users, currentUser]); // Executa sempre que a lista de usuários mudar ou o currentUser mudar
-  // -----------------------------------------------------
+  }, [users, currentUser]);
+
+  // --- CALCULAR ÚLTIMO PONTO DO USUÁRIO PARA PASSAR AO TIMECLOCK ---
+  // Evita erro de índice no Firestore ao reutilizar os dados já carregados
+  const userLastEntry = useMemo(() => {
+    if (!currentUser || attendance.length === 0) return null;
+    // attendance já está ordenado por timestamp desc no onSnapshot principal
+    return attendance.find(a => a.employeeId === currentUser.id) || null;
+  }, [currentUser, attendance]);
 
   useEffect(() => {
     // Listener para o evento de instalação PWA
@@ -146,8 +151,6 @@ const App: React.FC = () => {
         setDoc(doc(db, 'users', master.id), master).catch(e => logError("Erro Criar Master", e));
       } else {
         setUsers(usersData);
-        // REMOVIDO A ATUALIZAÇÃO DO currentUser AQUI POIS ESTAVA CAUSANDO STALE STATE
-        // A lógica foi movida para o useEffect dedicado acima.
       }
       setIsInitializing(false);
     }, (err) => { logError("Erro Usuários", err); setIsInitializing(false); });
@@ -164,7 +167,6 @@ const App: React.FC = () => {
       setAttendance(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as AttendanceEntry)));
     }, (err) => logError("Erro Pontos", err));
 
-    // Listener para Configurações (Categorias)
     const unsubSettings = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
       if (docSnap.exists() && docSnap.data().productCategories) {
         setProductCategories(docSnap.data().productCategories);
@@ -181,7 +183,6 @@ const App: React.FC = () => {
     };
   }, [logError]);
 
-  // Retorna os IDs dos requisitos de foto salvos com sucesso
   const handleUpdateTaskStatus = async (id: string, status: TaskStatus, evidencePhotos?: {requirementId: string, title: string, data: string}[]) : Promise<string[]> => {
     const successfulUploadIds: string[] = [];
     
@@ -198,27 +199,22 @@ const App: React.FC = () => {
         updates.completedAt = Date.now();
         updates.archived = false; 
         
-        // GAMIFICAÇÃO: Se o usuário atual estiver finalizando a tarefa, ele ganha ponto
         if (currentUser) {
           const userRef = doc(db, 'users', currentUser.id);
-          // Usa 'increment' do Firestore para garantir integridade e atomicidade
           updateDoc(userRef, { points: increment(1) }).catch(err => console.error("Erro ao dar pontos", err));
         }
       }
 
-      // Preparação para processar evidências existentes
       const evidenceMap = new Map<string, TaskEvidence>();
       const existingEvidences: TaskEvidence[] = currentTaskData.evidences || [];
       existingEvidences.forEach(ev => evidenceMap.set(ev.requirementId, ev));
 
       if (evidencePhotos && evidencePhotos.length > 0) {
-        // Upload sequencial/paralelo com tratamento de erro individual
         const uploadPromises = evidencePhotos.map(async (photo) => {
           const fileName = `tasks/${id}/ev_${photo.requirementId}_${Date.now()}.jpg`;
           const storageRef = ref(storage, fileName);
           
           try {
-            // Verifica integridade básica do Base64
             if (!photo.data.includes('base64,')) {
                 console.warn(`Formato de imagem inválido para ${photo.title}`);
                 throw new Error("Formato inválido");
@@ -227,7 +223,6 @@ const App: React.FC = () => {
             await uploadString(storageRef, photo.data, 'data_url', { contentType: 'image/jpeg' });
             const url = await getDownloadURL(storageRef);
             
-            // Adiciona aos IDs de sucesso
             successfulUploadIds.push(photo.requirementId);
             
             return { 
@@ -243,7 +238,6 @@ const App: React.FC = () => {
 
         const results = await Promise.all(uploadPromises);
         
-        // Adiciona ao mapa apenas os sucessos
         results.forEach(res => {
             if (res.success && res.evidence) {
                 evidenceMap.set(res.evidence.requirementId, res.evidence);
@@ -260,7 +254,7 @@ const App: React.FC = () => {
     } catch(e: any) { 
       console.error("Falha ao atualizar tarefa:", e);
       alert("Erro crítico ao salvar tarefa: " + e.message);
-      return []; // Retorna lista vazia em caso de erro crítico na tarefa
+      return []; 
     }
   };
 
@@ -315,11 +309,7 @@ const App: React.FC = () => {
     } catch (e: any) { alert("Erro ao criar tarefa: " + e.message); }
   };
 
-  // --- FUNÇÕES DE EXCLUSÃO IMPLEMENTADAS ---
-
-  // Exclusão de Tarefas (Já existia, reforçada)
   const handleDeleteTask = async (taskId: string, deleteMode: 'SINGLE' | 'RECURRING') => {
-    // Permite que quem pode gerenciar tarefas (ADMIN/MASTER) exclua
     if (!currentUser?.permissions.canManageTasks) return alert("Permissão negada para excluir tarefas.");
     
     try {
@@ -347,21 +337,18 @@ const App: React.FC = () => {
     }
   };
 
-  // Exclusão de Usuários (Soft Delete - Recomendado para integridade)
   const handleDeleteUser = async (userId: string) => {
     if (currentUser?.role !== 'MASTER' && currentUser?.role !== 'ADMIN') {
       alert("Apenas Administradores ou Master podem excluir usuários.");
       return;
     }
     try {
-      // Soft Delete: Apenas inativa para manter histórico de tarefas e ponto
       await updateDoc(doc(db, 'users', userId), { active: false });
     } catch (e: any) {
       alert("Erro ao remover usuário: " + e.message);
     }
   };
 
-  // Exclusão de Itens de Estoque/Faltas
   const handleDeleteShortage = async (shortageId: string) => {
     if (!currentUser?.permissions.canManageShortages) {
       alert("Você não tem permissão para gerenciar o estoque.");
@@ -376,7 +363,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Exclusão de Registros de Ponto (Apenas MASTER para segurança)
   const handleDeleteAttendance = async (logId: string) => {
     if (currentUser?.role !== 'MASTER') {
       alert("Apenas o perfil MASTER pode excluir registros de ponto por motivos de segurança.");
@@ -410,7 +396,6 @@ const App: React.FC = () => {
           <button onClick={() => setIsSidebarOpen(false)} className="md:hidden text-amber-400"><X size={24} /></button>
         </div>
         <nav className="flex-1 p-4 space-y-2 overflow-y-auto scroll-hide">
-          {/* SE ESTIVER BLOQUEADO POR FALTA DE PONTO, ESCONDE A NAVEGAÇÃO */}
           {!isAttendanceLocked ? (
             <>
               {currentUser.permissions.canManageTasks && <button onClick={() => { setActiveTab(AppTab.BOARD); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.BOARD ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><ClipboardList size={22} /> <span>Tarefas</span></button>}
@@ -431,7 +416,6 @@ const App: React.FC = () => {
           )}
         </nav>
         
-        {/* Rodapé da Sidebar */}
         <div className="p-4 border-t border-amber-900 bg-amber-950/50 space-y-3">
           {showInstallButton && (
             <button 
@@ -472,7 +456,7 @@ const App: React.FC = () => {
                 onUpdateShortage={(id, u) => updateDoc(doc(db, 'shortages', id), u)} 
                 onDeleteShortage={handleDeleteShortage} 
             />}
-            {activeTab === AppTab.ATTENDANCE && <div className="max-w-4xl mx-auto space-y-8"><TimeClock currentUser={currentUser} locations={locations} onPunch={(e) => addDoc(collection(db, 'pontos'), e)} onGoToProfile={() => setActiveTab(AppTab.PROFILE)} /><div className="bg-white rounded-[2rem] border overflow-hidden shadow-sm"><div className="p-6 border-b font-bold text-slate-800 flex items-center gap-2"><Clock size={18} className="text-amber-500" /> Registros de Ponto</div><AttendanceLog logs={attendance.filter(l => l.employeeId === currentUser.id)} /></div></div>}
+            {activeTab === AppTab.ATTENDANCE && <div className="max-w-4xl mx-auto space-y-8"><TimeClock currentUser={currentUser} locations={locations} lastEntry={userLastEntry} onPunch={(e) => addDoc(collection(db, 'pontos'), e)} onGoToProfile={() => setActiveTab(AppTab.PROFILE)} /><div className="bg-white rounded-[2rem] border overflow-hidden shadow-sm"><div className="p-6 border-b font-bold text-slate-800 flex items-center gap-2"><Clock size={18} className="text-amber-500" /> Registros de Ponto</div><AttendanceLog logs={attendance.filter(l => l.employeeId === currentUser.id)} /></div></div>}
             {activeTab === AppTab.REPORTS && <AttendanceReports logs={attendance} users={users} tasks={tasks} locations={locations} onSaveLocation={handleSaveLocation} onDeleteLocation={handleDeleteLocation} onDeleteAttendance={handleDeleteAttendance} versionInfo={versionData} currentUser={currentUser} />}
             {activeTab === AppTab.USERS && <UserManagement users={users} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} onAddUser={(u) => setDoc(doc(db, 'users', u.id), u)} onDeleteUser={handleDeleteUser} />}
             {activeTab === AppTab.PROFILE && <UserProfile user={currentUser} tasks={tasks} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} />}

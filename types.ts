@@ -77,6 +77,7 @@ export interface AttendanceEntry {
   employeeName: string;
   type: 'ENTRADA' | 'SAIDA';
   timestamp: number;
+  dateStr?: string; // Data local YYYY-MM-DD para agrupamento
   photoUrl: string; // URL da selfie ou da evidência manual
   location: {
     lat: number;
