@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'pdc-gestao-v2';
+const CACHE_NAME = 'pdc-gestao-v3-fix-bucket';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -7,7 +7,7 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
-  // Força o SW a ativar imediatamente, essencial para correções rápidas em PWAs
+  // Força o SW a ativar imediatamente, pulando a espera
   self.skipWaiting();
   
   event.waitUntil(
@@ -16,26 +16,33 @@ self.addEventListener('install', event => {
   );
 });
 
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
-  );
-});
-
 self.addEventListener('activate', event => {
-  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     Promise.all([
+      self.clients.claim(), // Toma controle imediato de todas as abertas
+      // Limpa caches antigos que não batem com o nome atual
       caches.keys().then(cacheNames => {
         return Promise.all(
           cacheNames.map(cacheName => {
-            if (cacheWhitelist.indexOf(cacheName) === -1) {
+            if (cacheName !== CACHE_NAME) {
+              console.log('Deletando cache antigo:', cacheName);
               return caches.delete(cacheName);
             }
           })
         );
-      }),
-      self.clients.claim() // Garante que o SW controle as abas imediatamente
+      })
     ])
+  );
+});
+
+self.addEventListener('fetch', event => {
+  // NOVA REGRA: Ignorar requisições para o Firebase Storage (Uploads/Downloads de mídia)
+  // Isso evita erros de CORS e problemas com uploads grandes interceptados pelo SW
+  if (event.request.url.includes('firebasestorage.googleapis.com')) {
+    return; // Sai da função e deixa o navegador tratar a requisição nativamente
+  }
+
+  event.respondWith(
+    fetch(event.request).catch(() => caches.match(event.request))
   );
 });

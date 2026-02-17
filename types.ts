@@ -163,6 +163,20 @@ export interface CashSession {
   notes?: string;
 }
 
+// Novos Tipos para Eventos de Caixa
+export type CashEventType = 'SANGRIA' | 'SALE_NO_ENTRY' | 'ENTRY_ERROR' | 'OTHER';
+
+export interface CashEvent {
+  id: string;
+  sessionId: string; // ID da sessão de caixa pai
+  type: CashEventType;
+  amount: number; // Valor envolvido
+  description: string;
+  evidenceUrl?: string; // URL da foto
+  createdAt: number; // Timestamp
+  createdBy: string;
+}
+
 export interface PermissionSet {
   canManageTasks: boolean;
   canRecordAttendance: boolean;

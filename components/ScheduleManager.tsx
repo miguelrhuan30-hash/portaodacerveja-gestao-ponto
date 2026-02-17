@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, User, Clock, Briefcase, X, Save, AlertCircle, Plus, Trash2, Check, XCircle, Edit3, CircleDollarSign, ArrowRightLeft, Split, CalendarDays, ArrowRight, FileText, Paperclip, UploadCloud, AlertTriangle, Circle } from 'lucide-react';
 import { SystemUser, WorkSchedule, ScheduleException, AttendanceEntry } from '../types';
@@ -499,8 +498,11 @@ const ScheduleManager: React.FC<ScheduleManagerProps> = ({ users, currentUser, a
             const existingExc = user.workSchedule?.monthlyExceptions?.find(e => e.date === selectedDay);
             
             // Se for OFF e já existir uma exception OFF complexa (ou ABSENCE), não sobrescreve
-            if (edit.type === 'OFF' && existingExc && (existingExc.type === 'ABSENCE' || (existingExc.type === 'OFF' && (existingExc.deductFromBank || existingExc.linkedDate || existingExc.note?.includes('Diluída'))))) {
-                return;
+            if (edit.type === 'OFF' && existingExc) {
+                const isAbsence = existingExc.type === 'ABSENCE';
+                const isComplexOff = existingExc.type === 'OFF' && (existingExc.deductFromBank || existingExc.linkedDate || existingExc.note?.includes('Diluída'));
+                
+                if (isAbsence || isComplexOff) return;
             }
 
             const newException: ScheduleException = {
