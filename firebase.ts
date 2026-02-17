@@ -9,8 +9,8 @@ const firebaseConfig = {
   
   // --- ESTES DADOS EU JÁ CORRIGI PARA VOCÊ (CONFIRA SE BATEREM) ---
   authDomain: "gen-lang-client-0756600199.firebaseapp.com",
-  projectId: "gen-lang-client-0756600199",
-  storageBucket: "gen-lang-client-0756600199.firebasestorage.app",
+  projectId: "gen-lang-client-0756600199"
+  storageBucket: "ai-studio-bucket-1023100601926-us-west1"
   messagingSenderId: "1023100601926",
   measurementId: "G-72X9795H7H"
 };

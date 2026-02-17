@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'pdc-gestao-v3-fix-bucket';
+const CACHE_NAME = 'pdc-vfinal-bucket-fix'
 const urlsToCache = [
   '/',
   '/index.html',
