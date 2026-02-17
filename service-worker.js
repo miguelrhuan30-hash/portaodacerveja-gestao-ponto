@@ -1,31 +1,31 @@
-
-const CACHE_NAME = 'pdc-gestao-v9-style-fix';
+const CACHE_NAME = 'pdc-gestao-v10-final-fix'; // Mudei a versão para forçar atualização
 const urlsToCache = [
   '/',
   '/index.html',
   '/manifest.json'
 ];
 
-self.addEventListener('install', event => {
-  // Força o SW a ativar imediatamente, pulando a espera
-  self.skipWaiting();
-  
+// Instalação: Cacheia arquivos estáticos
+self.addEventListener('install', (event) => {
+  self.skipWaiting(); // Força o novo SW a assumir imediatamente
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
+    caches.open(CACHE_NAME).then((cache) => {
+      console.log('Cache aberto');
+      return cache.addAll(urlsToCache);
+    })
   );
 });
 
-self.addEventListener('activate', event => {
+// Ativação: Limpa caches antigos
+self.addEventListener('activate', (event) => {
   event.waitUntil(
     Promise.all([
-      self.clients.claim(), // Toma controle imediato de todas as abertas
-      // Limpa caches antigos que não batem com o nome atual
-      caches.keys().then(cacheNames => {
+      self.clients.claim(), // Toma controle das abas imediatamente
+      caches.keys().then((cacheNames) => {
         return Promise.all(
-          cacheNames.map(cacheName => {
+          cacheNames.map((cacheName) => {
             if (cacheName !== CACHE_NAME) {
-              console.log('Deletando cache antigo:', cacheName);
+              console.log('Limpando cache antigo:', cacheName);
               return caches.delete(cacheName);
             }
           })
@@ -35,17 +35,36 @@ self.addEventListener('activate', event => {
   );
 });
 
-self.addEventListener('fetch', event => {
-  const url = event.request.url;
+// Fetch: A Lógica de Interceptação (AQUI ESTAVA O ERRO)
+self.addEventListener('fetch', (event) => {
+  const requestUrl = new URL(event.request.url);
 
-  // CORREÇÃO CRÍTICA: Ignorar requisições para o Firebase (Storage, Firestore, Auth) e Google APIs
-  // Isso evita que o Service Worker tente interceptar uploads ou leituras de banco, 
-  // o que causava erros de CORS e 'Failed to fetch'.
-  if (url.includes('googleapis.com') || url.includes('firebase') || url.includes('firestore')) {
-    return; // Sai da função e deixa o navegador tratar a requisição nativamente via rede
+  // 1. REGRA DE OURO: Se não for GET, não cacheia (Uploads são POST)
+  if (event.request.method !== 'GET') {
+    return; // Deixa o navegador lidar com isso (vai direto pra rede)
   }
 
+  // 2. REGRA DE PRATA: Ignora URLs do Firebase/Google
+  if (requestUrl.hostname.includes('googleapis.com') || 
+      requestUrl.hostname.includes('firebase') || 
+      requestUrl.hostname.includes('firestore')) {
+    return; // Não toca nessas requisições
+  }
+
+  // 3. Regra para arquivos do próprio site
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    caches.match(event.request).then((response) => {
+      // Cache hit - retorna resposta do cache
+      if (response) {
+        return response;
+      }
+      // Se não tem no cache, busca na rede
+      return fetch(event.request).catch(() => {
+        // Se falhar e for navegação (ex: sem internet), mostra a home
+        if (event.request.mode === 'navigate') {
+          return caches.match('/index.html');
+        }
+      });
+    })
   );
 });
