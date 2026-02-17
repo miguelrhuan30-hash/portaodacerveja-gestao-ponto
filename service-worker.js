@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'pdc-v8-sw-fix';
+const CACHE_NAME = 'pdc-gestao-v9-style-fix';
 const urlsToCache = [
   '/',
   '/index.html',
