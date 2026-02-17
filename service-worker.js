@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'pdc-vfinal-bucket-fix'
+const CACHE_NAME = 'pdc-v8-sw-fix';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -36,10 +36,13 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  // NOVA REGRA: Ignorar requisições para o Firebase Storage (Uploads/Downloads de mídia)
-  // Isso evita erros de CORS e problemas com uploads grandes interceptados pelo SW
-  if (event.request.url.includes('firebasestorage.googleapis.com')) {
-    return; // Sai da função e deixa o navegador tratar a requisição nativamente
+  const url = event.request.url;
+
+  // CORREÇÃO CRÍTICA: Ignorar requisições para o Firebase (Storage, Firestore, Auth) e Google APIs
+  // Isso evita que o Service Worker tente interceptar uploads ou leituras de banco, 
+  // o que causava erros de CORS e 'Failed to fetch'.
+  if (url.includes('googleapis.com') || url.includes('firebase') || url.includes('firestore')) {
+    return; // Sai da função e deixa o navegador tratar a requisição nativamente via rede
   }
 
   event.respondWith(
