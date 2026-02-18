@@ -44,22 +44,25 @@ const App: React.FC = () => {
   }, []);
 
   // --- LÓGICA DE BLOQUEIO POR FALTA DE PONTO ---
+  // NOVA LÓGICA: Baseada no status do turno (Aberto/Fechado), não na data.
   const isAttendanceLocked = useMemo(() => {
-    if (!currentUser || currentUser.role !== 'EMPLOYEE') return false;
+    // 1. Se não for funcionário, nunca bloqueia
+    if (!currentUser || currentUser.role !== 'EMPLOYEE')
+        return false;
 
-    // Define o início do dia atual (00:00:00)
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    // 2. Busca o último registro histórico desse usuário
+    // (A lista 'attendance' já vem ordenada por timestamp decrescente do banco)
+    const lastEntry = attendance.find(entry => entry.employeeId === currentUser.id);
 
-    // Verifica se existe algum registro de 'ENTRADA' do usuário hoje
-    const hasClockedInToday = attendance.some(entry => 
-      entry.employeeId === currentUser.id && 
-      entry.type === 'ENTRADA' && 
-      entry.timestamp >= startOfDay.getTime()
-    );
+    // 3. Se nunca bateu ponto na vida, bloqueia (precisa dar entrada)
+    if (!lastEntry) return true;
 
-    // Se NÃO bateu ponto hoje, retorna TRUE (Bloqueado)
-    return !hasClockedInToday;
+    // 4. Se o último registro foi 'SAIDA', o turno está FECHADO -> BLOQUEIA
+    if (lastEntry.type === 'SAIDA') return true;
+
+    // 5. Se o último registro foi 'ENTRADA', o turno está ABERTO -> LIBERA
+    // (Isso funciona mesmo que a entrada tenha sido ontem)
+    return false;
   }, [currentUser, attendance]);
 
   // Efeito para forçar a aba de Ponto se estiver bloqueado
