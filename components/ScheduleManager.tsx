@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, User, Clock, Briefcase, X, Save, AlertCircle, Plus, Trash2, Check, XCircle, Edit3, CircleDollarSign, ArrowRightLeft, Split, CalendarDays, ArrowRight, FileText, Paperclip, UploadCloud, AlertTriangle, Circle } from 'lucide-react';
 import { SystemUser, WorkSchedule, ScheduleException, AttendanceEntry } from '../types';
