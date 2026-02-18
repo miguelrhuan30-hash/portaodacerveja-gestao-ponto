@@ -1,5 +1,4 @@
-
-const CACHE_NAME = 'pdc-gestao-v12-cors-fix';
+const CACHE_NAME = 'pdc-gestao-v13-fix';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -33,16 +32,18 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(event.request.url);
 
-  // REGRA 1: Ignora qualquer requisição que não seja GET (Uploads são POST)
-  if (event.request.method !== 'GET') return;
+  // 1. IGNORAR UPLOADS (POST, PUT, DELETE) - Deixa passar para a internet
+  if (event.request.method !== 'GET') {
+    return;
+  }
 
-  // REGRA 2: Ignora URLs externas (Firebase, Google, API)
+  // 2. IGNORAR FIREBASE E GOOGLE APIS
   if (requestUrl.hostname.includes('googleapis.com') || 
       requestUrl.hostname.includes('firebase')) {
     return;
   }
 
-  // REGRA 3: Cache First para arquivos locais
+  // 3. Cache First para arquivos estáticos locais
   event.respondWith(
     caches.match(event.request).then((response) => {
       return response || fetch(event.request).catch(() => {

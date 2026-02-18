@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Plus, Clock, X, Check, Timer, TrendingUp, Camera, RefreshCw, Trash2, ListChecks, PlusCircle, Calendar as CalendarIcon, Grid, ChevronLeft, ChevronRight, Info, CheckCircle2, AlertCircle, CalendarDays, UploadCloud, Save, Image as ImageIcon, ExternalLink, Award, PartyPopper, ArrowRight } from 'lucide-react';
 import { Task, TaskStatus, SystemUser, RecurrenceType, TaskPhotoRequirement } from '../types';
@@ -613,11 +612,14 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
               <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-amber-500 rounded-full transition-colors"><X size={24}/></button>
             </div>
             
-            <form onSubmit={handleCreateTask} className="p-8 space-y-6">
+            <form onSubmit={handleCreateTask} className="p-8 space-y-6" autoComplete="off">
+              {/* Campo oculto para evitar que o navegador pense que é um formulário de login */}
+              <input type="hidden" value="prayer" />
+              
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Título da Atividade</label>
-                  <input type="text" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border rounded-2xl outline-none font-bold text-black placeholder:text-slate-500" style={{ colorScheme: 'light' }} placeholder="Ex: Lavagem de barris, Produção Lote #04..." />
+                  <input type="text" name="taskTitle_unique_id" autoComplete="off" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} className="w-full px-5 py-3.5 bg-slate-50 border rounded-2xl outline-none font-bold text-black placeholder:text-slate-500" style={{ colorScheme: 'light' }} placeholder="Ex: Lavagem de barris, Produção Lote #04..." />
                 </div>
                 
                 <div className="md:col-span-2">
