@@ -143,7 +143,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onUpdateUser, on
         canViewReports: formUser.role === 'ADMIN',
         canManageUsers: false,
         canManageShortages: true,
-        canManageCash: false
+        canManageCash: false,
+        canViewConferencia: formUser.role !== 'EMPLOYEE',
+        canManageConferencia: formUser.role !== 'EMPLOYEE'
       }
     };
 
@@ -247,7 +249,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onUpdateUser, on
                     { key: 'canRecordAttendance', label: 'Ponto' },
                     { key: 'canViewReports', label: 'Gestão' },
                     { key: 'canManageShortages', label: 'Estoque' },
-                    { key: 'canManageCash', label: 'Op. Caixa' }
+                    { key: 'canManageCash', label: 'Op. Caixa' },
+                    { key: 'canViewConferencia', label: 'Conf. (Ver/Exec)' },
+                    { key: 'canManageConferencia', label: 'Conf. (Gerenciar)' }
                 ].map(p => (
                     <button
                     key={p.key}

@@ -14,6 +14,7 @@ import ProductShortageComponent from './components/ProductShortage';
 import ScheduleManager from './components/ScheduleManager';
 import CashRegister from './components/CashRegister';
 import FinancialReports from './components/FinancialReports';
+import Conferencia from './components/Conferencia';
 import LoginView from './components/LoginView';
 import { AppTab, Task, AttendanceEntry, SystemUser, BranchLocation, ProductShortage, TaskStatus, TaskEvidence } from './types';
 import { versionData } from './version';
@@ -406,6 +407,7 @@ const App: React.FC = () => {
             <>
               {currentUser.permissions.canManageTasks && <button onClick={() => { setActiveTab(AppTab.BOARD); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.BOARD ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><ClipboardList size={22} /> <span>Tarefas</span></button>}
               <button onClick={() => { setActiveTab(AppTab.SHORTAGE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.SHORTAGE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><PackageSearch size={22} /> <span>Estoque</span></button>
+              {(currentUser.permissions.canViewConferencia || currentUser.permissions.canManageConferencia || currentUser.role === 'ADMIN' || currentUser.role === 'MASTER') && <button onClick={() => { setActiveTab(AppTab.CONFERENCIA); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.CONFERENCIA ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><ClipboardList size={22} /> <span>Conferência</span></button>}
               {currentUser.permissions.canManageCash && <button onClick={() => { setActiveTab(AppTab.CASH); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.CASH ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><DollarSign size={22} /> <span>Caixa</span></button>}
               {currentUser.permissions.canRecordAttendance && <button onClick={() => { setActiveTab(AppTab.ATTENDANCE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.ATTENDANCE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><Clock size={22} /> <span>Ponto</span></button>}
               {currentUser.permissions.canViewReports && <button onClick={() => { setActiveTab(AppTab.REPORTS); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.REPORTS ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><Calendar size={22} /> <span>Gestão</span></button>}
@@ -467,6 +469,7 @@ const App: React.FC = () => {
             />}
             {activeTab === AppTab.CASH && <CashRegister currentUser={currentUser} />}
             {activeTab === AppTab.FINANCIAL && <FinancialReports users={users} />}
+            {activeTab === AppTab.CONFERENCIA && <Conferencia currentUser={currentUser} />}
             {activeTab === AppTab.ATTENDANCE && <div className="max-w-4xl mx-auto space-y-8"><TimeClock currentUser={currentUser} locations={locations} lastEntry={userLastEntry} onPunch={(e) => addDoc(collection(db, 'pontos'), e)} onGoToProfile={() => setActiveTab(AppTab.PROFILE)} onRequestCashOpen={() => setActiveTab(AppTab.CASH)} /><div className="bg-white rounded-[2rem] border overflow-hidden shadow-sm"><div className="p-6 border-b font-bold text-slate-800 flex items-center gap-2"><Clock size={18} className="text-amber-500" /> Registros de Ponto</div><AttendanceLog logs={attendance.filter(l => l.employeeId === currentUser.id)} /></div></div>}
             {activeTab === AppTab.REPORTS && <AttendanceReports logs={attendance} users={users} tasks={tasks} locations={locations} onSaveLocation={handleSaveLocation} onDeleteLocation={handleDeleteLocation} onDeleteAttendance={handleDeleteAttendance} versionInfo={versionData} currentUser={currentUser} />}
             {activeTab === AppTab.SCHEDULE && <ScheduleManager users={users} currentUser={currentUser} attendance={attendance} onUpdateUser={(u) => setDoc(doc(db, 'users', u.id), u)} />}

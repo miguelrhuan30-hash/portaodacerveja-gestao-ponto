@@ -184,6 +184,8 @@ export interface PermissionSet {
   canManageUsers: boolean;
   canManageShortages: boolean;
   canManageCash: boolean; // Nova permissão
+  canViewConferencia?: boolean;
+  canManageConferencia?: boolean;
 }
 
 export interface SystemUser {
@@ -211,5 +213,27 @@ export enum AppTab {
   SHORTAGE = 'estoque',
   SCHEDULE = 'escala',
   CASH = 'caixa',
-  FINANCIAL = 'financeiro'
+  FINANCIAL = 'financeiro',
+  CONFERENCIA = 'conferencia'
+}
+
+export interface StockProduct {
+  Categoria: string;
+  Código: string;
+  Nome: string;
+  Quantidade: string;
+  Medida: string;
+  mov: string;
+  done: boolean;
+}
+
+export interface StockConference {
+  id: string;
+  name: string;
+  createdAt: number; // Storing as timestamp number or Timestamp. Let's use number for consistency with other types, or any.
+  createdBy: string;
+  products: StockProduct[];
+  totalItems: number;
+  doneItems: number;
+  status: 'pending' | 'done';
 }
