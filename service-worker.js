@@ -1,5 +1,5 @@
 
-const CACHE_NAME = 'pdc-v14-fix-upload';
+const CACHE_NAME = 'pdc-v76-deploy-2026';
 const urlsToCache = ['/', '/index.html', '/manifest.json'];
 
 self.addEventListener('install', (event) => {

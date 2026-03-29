@@ -44,6 +44,29 @@ const App: React.FC = () => {
     console.error(`${title}:`, message);
   }, []);
 
+  // --- RESTAURAR SESSÃO DO LOCALSTORAGE ---
+  // Executado uma única vez após os usuários serem carregados
+  useEffect(() => {
+    if (users.length === 0 || isLoggedIn) return;
+    try {
+      const stored = localStorage.getItem('pdc_session');
+      if (stored) {
+        const { email, password } = JSON.parse(stored);
+        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+        if (user && user.active) {
+          setCurrentUser(user);
+          setIsLoggedIn(true);
+          setActiveTab(user.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
+        } else {
+          // Sessão inválida, limpa
+          localStorage.removeItem('pdc_session');
+        }
+      }
+    } catch {
+      localStorage.removeItem('pdc_session');
+    }
+  }, [users, isLoggedIn]);
+
   // --- LÓGICA DE BLOQUEIO POR FALTA DE PONTO ---
   // NOVA LÓGICA: Baseada no status do turno (Aberto/Fechado), não na data.
   const isAttendanceLocked = useMemo(() => {
