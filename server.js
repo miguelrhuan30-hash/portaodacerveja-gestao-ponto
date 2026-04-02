@@ -1,35 +1,111 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
-const app = express();
+const helmet = require('helmet');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-// O Cloud Run exige que o app ouça a porta definida na variável PORT
+const app = express();
 const port = process.env.PORT || 8080;
 
-// Rota especial para o index.html: injeta variáveis de ambiente de forma segura
-app.get('/', (req, res) => {
-  const indexPath = path.join(__dirname, 'index.html');
-  let html = fs.readFileSync(indexPath, 'utf8');
+// ── Segurança: headers HTTP ──────────────────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: [
+        "'self'",
+        "https://firestore.googleapis.com",
+        "https://firebase.googleapis.com",
+        "https://firebasestorage.googleapis.com",
+        "https://storage.googleapis.com",
+        "https://*.googleapis.com",
+        "wss://*.firebaseio.com",
+      ],
+      imgSrc: ["'self'", "data:", "blob:", "https://storage.googleapis.com"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      mediaSrc: ["'self'", "blob:"],
+      workerSrc: ["'self'", "blob:"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // necessário para getUserMedia (câmera)
+}));
 
-  // Injeta a API Key do Gemini como variável global no browser
-  // A chave vem da variável de ambiente do Cloud Run (nunca fica no código)
-  const apiKey = process.env.GEMINI_API_KEY || '';
-  const injection = `<script>window.__GEMINI_API_KEY__ = ${JSON.stringify(apiKey)};</script>`;
-  html = html.replace('</head>', `  ${injection}\n</head>`);
+app.use(express.json({ limit: '3mb' }));
 
-  res.setHeader('Content-Type', 'text/html');
-  res.send(html);
+// ── Rate limiting simples (sem dependência extra) ─────────────────
+const requestCounts = new Map();
+function rateLimit(maxReq, windowMs) {
+  return (req, res, next) => {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    const entry = requestCounts.get(ip) || { count: 0, start: now };
+    if (now - entry.start > windowMs) { entry.count = 0; entry.start = now; }
+    entry.count++;
+    requestCounts.set(ip, entry);
+    if (entry.count > maxReq) {
+      return res.status(429).json({ error: 'Muitas tentativas. Aguarde 1 minuto.' });
+    }
+    next();
+  };
+}
+
+// ── Proxy Gemini — análise biométrica ────────────────────────────
+app.post('/api/analyze-face', rateLimit(10, 60_000), async (req, res) => {
+  try {
+    const { imageBase64 } = req.body;
+
+    if (!imageBase64 || typeof imageBase64 !== 'string') {
+      return res.status(400).json({ error: 'imageBase64 é obrigatório' });
+    }
+    if (imageBase64.length > 2_500_000) {
+      return res.status(400).json({ error: 'Imagem muito grande. Máximo ~1.5MB.' });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      // Fallback gracioso: sem key, retorna "humano" para não bloquear o ponto
+      console.warn('[proxy] GEMINI_API_KEY não configurada. Usando fallback.');
+      return res.json({ isHuman: true, confidence: 0, details: 'Biometria desativada (sem API key).' });
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: imageBase64.replace(/^data:image\/\w+;base64,/, ''),
+        },
+      },
+      {
+        text: `Analise esta imagem.
+        Responda APENAS com um JSON no formato:
+        {"isHuman": true/false, "confidence": 0.0-1.0, "details": "descrição curta"}
+        isHuman deve ser true apenas se houver um rosto humano real e vivo visível.`,
+      },
+    ]);
+
+    const text = result.response.text().trim();
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+
+    return res.json(parsed);
+  } catch (err) {
+    console.error('[proxy] Erro na análise biométrica:', err.message);
+    return res.status(500).json({ error: 'Falha na análise biométrica' });
+  }
 });
 
-// Arquivos estáticos (JS, CSS, imagens, manifest, service-worker, etc.)
+// ── Arquivos estáticos e SPA ──────────────────────────────────────
 app.use(express.static(__dirname));
 
-// Rota coringa para SPA — garante que refresh em qualquer rota funcione
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`Servidor Portão da Cerveja rodando na porta ${port}`);
-  console.log(`Biometria Gemini: ${process.env.GEMINI_API_KEY ? '✅ Configurada' : '⚠️  Sem API key (fallback ativado)'}`);
+  console.log(`✅ Servidor Portão da Cerveja na porta ${port}`);
+  console.log(`🔒 Helmet: ativo`);
+  console.log(`🤖 Gemini proxy: ${process.env.GEMINI_API_KEY ? '✅ Configurado' : '⚠️  Sem API key (fallback ativado)'}`);
 });
