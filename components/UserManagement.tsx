@@ -2,6 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { UserPlus, Shield, Mail, Trash2, Edit3, CheckCircle2, XCircle, Lock, Eye, EyeOff, X, Save, Clock, Power, Award, CalendarDays, Briefcase, ChevronDown, ChevronUp, Copy, Plus, AlertCircle, DollarSign } from 'lucide-react';
 import { SystemUser, PermissionSet, WorkSchedule, DaySchedule, ScheduleException } from '../types';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase';
 
 interface UserManagementProps {
   users: SystemUser[];
@@ -115,7 +117,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onUpdateUser, on
     setShowAddModal(true);
   };
 
-  const handleSaveUser = () => {
+  const handleSaveUser = async () => {
     if (!formUser.name || !formUser.email) {
       alert("Preencha os campos obrigatórios.");
       return;
@@ -153,7 +155,27 @@ const UserManagement: React.FC<UserManagementProps> = ({ users, onUpdateUser, on
         onUpdateUser(userData);
     } else {
         if (!formUser.password) return alert("Senha é obrigatória para novos usuários.");
-        onAddUser(userData);
+        let newUser = userData;
+        try {
+          const firebaseCredential = await createUserWithEmailAndPassword(
+            auth,
+            formUser.email,
+            formUser.password
+          );
+          newUser = {
+            ...newUser,
+            id: firebaseCredential.user.uid,
+            firebaseUid: firebaseCredential.user.uid,
+          };
+        } catch (firebaseErr: any) {
+          if (firebaseErr.code === 'auth/email-already-in-use') {
+            alert('Este email já está cadastrado no Firebase Auth. Use outro email ou contate o suporte.');
+          } else {
+            alert('Erro ao criar conta: ' + firebaseErr.message);
+          }
+          return;
+        }
+        onAddUser(newUser);
     }
     
     setShowAddModal(false);
