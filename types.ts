@@ -203,6 +203,8 @@ export interface SystemUser {
   timeBankBalance?: number; // Saldo atual acumulado (em horas decimais)
   bankBalance?: number; // Saldo em minutos (backup/precisão)
   points: number;
+  firebaseUid?: string;
+  fcmToken?: string;
 }
 
 export enum AppTab {
