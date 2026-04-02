@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Beer, ClipboardList, Clock, Calendar, Users as UsersIcon, LogOut, Menu, X, PackageSearch, AlertCircle, Cpu, Download, Lock, CalendarDays, DollarSign, PieChart } from 'lucide-react';
+import { Beer, ClipboardList, Clock, Calendar, Users as UsersIcon, LogOut, Menu, X, PackageSearch, AlertCircle, Cpu, Download, Lock, CalendarDays, DollarSign, PieChart, TrendingUp } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, setDoc, deleteDoc, getDocs, where, writeBatch, getDoc, increment } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
 import { db, storage, auth } from './firebase';
@@ -17,6 +17,7 @@ import CashRegister from './components/CashRegister';
 import FinancialReports from './components/FinancialReports';
 import Conferencia from './components/Conferencia';
 import LoginView from './components/LoginView';
+import Dashboard from './components/Dashboard';
 import { AppTab, Task, AttendanceEntry, SystemUser, BranchLocation, ProductShortage, TaskStatus, TaskEvidence } from './types';
 import { versionData } from './version';
 import { ToastProvider } from './components/Toast';
@@ -422,6 +423,22 @@ const App: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'MASTER') return;
+    const q = query(
+      collection(db, 'access_attempts'),
+      where('notified', '==', false)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      snap.docs.forEach(async (d) => {
+        const attempt = d.data();
+        console.warn(`[Acesso negado] ${attempt.email} tentou entrar via Google`);
+        await updateDoc(doc(db, 'access_attempts', d.id), { notified: true });
+      });
+    });
+    return () => unsub();
+  }, [currentUser]);
+
   const handleLogout = async () => {
     localStorage.removeItem('pdc_session');
     await signOut(auth);
@@ -443,6 +460,14 @@ const App: React.FC = () => {
           {!isAttendanceLocked ? (
             <>
               {currentUser.permissions.canManageTasks && <button onClick={() => { setActiveTab(AppTab.BOARD); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.BOARD ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><ClipboardList size={22} /> <span>Tarefas</span></button>}
+              {currentUser.permissions.canViewReports && (
+                <button onClick={() => { setActiveTab(AppTab.DASHBOARD); setIsSidebarOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                    activeTab === AppTab.DASHBOARD ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'
+                  }`}>
+                  <TrendingUp size={22}/> <span>Dashboard</span>
+                </button>
+              )}
               <button onClick={() => { setActiveTab(AppTab.SHORTAGE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.SHORTAGE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><PackageSearch size={22} /> <span>Estoque</span></button>
               {(currentUser.permissions.canViewConferencia || currentUser.permissions.canManageConferencia || currentUser.role === 'ADMIN' || currentUser.role === 'MASTER') && <button onClick={() => { setActiveTab(AppTab.CONFERENCIA); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.CONFERENCIA ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><ClipboardList size={22} /> <span>Conferência</span></button>}
               {currentUser.permissions.canManageCash && <button onClick={() => { setActiveTab(AppTab.CASH); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.CASH ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><DollarSign size={22} /> <span>Caixa</span></button>}
@@ -495,6 +520,9 @@ const App: React.FC = () => {
         <div className="p-4 md:p-8 flex-1 w-full max-w-[100vw] flex flex-col min-h-full">
           <div className="flex-1">
             {activeTab === AppTab.BOARD && <KanbanBoard tasks={tasks} users={users} onAddTask={handleAddTask} onDeleteTask={handleDeleteTask} onUpdateStatus={handleUpdateTaskStatus} currentUser={currentUser} />}
+            {activeTab === AppTab.DASHBOARD && (
+              <Dashboard users={users} attendance={attendance} tasks={tasks} currentUser={currentUser} />
+            )}
             {activeTab === AppTab.SHORTAGE && <ProductShortageComponent 
                 shortages={shortages} 
                 currentUser={currentUser} 
