@@ -209,6 +209,7 @@ export interface SystemUser {
 
 export enum AppTab {
   BOARD = 'tarefas',
+  DASHBOARD = 'dashboard',
   ATTENDANCE = 'ponto',
   REPORTS = 'gestao',
   USERS = 'equipe',
