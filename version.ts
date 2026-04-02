@@ -1,13 +1,16 @@
 
 export const versionData = {
-  "version": "v76.0",
-  "deployDate": "2026-03-29",
+  "version": "v77.0",
+  "deployDate": "2026-04-02",
   "lastChanges": [
-    "Correção crítica: modelo Gemini corrigido para gemini-2.0-flash-exp.",
-    "Correção: mensagem de sucesso no registro de ponto estava invertida.",
-    "Biometria com fallback gracioso quando API key não configurada.",
-    "API key do Gemini via variável de ambiente no Cloud Run.",
-    "Cache do Service Worker atualizado para invalidar versões antigas.",
-    "Restauração de sessão ao recarregar a página."
+    "Segurança: senhas armazenadas com hash SHA-256 (migração automática no login).",
+    "Segurança: API key do Gemini movida para proxy server-side (/api/analyze-face).",
+    "Segurança: sessão 'lembrar de mim' usa token seguro, sem armazenar senha.",
+    "Segurança: headers HTTP de segurança via Helmet.js (CSP, X-Frame-Options, etc.).",
+    "Segurança: IDs de tarefas recorrentes usam crypto.randomUUID().",
+    "Qualidade: CashRegister atualiza em tempo real via onSnapshot.",
+    "Qualidade: sistema de Toast substitui todos os alert() nativos.",
+    "Qualidade: timer de turno exibe hh:mm:ss e atualiza a cada 30 segundos.",
+    "Qualidade: tarefas recorrentes com horizonte configurável (máx. 365 dias)."
   ]
 };
