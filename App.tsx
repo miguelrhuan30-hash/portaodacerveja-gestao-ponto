@@ -3,7 +3,8 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Beer, ClipboardList, Clock, Calendar, Users as UsersIcon, LogOut, Menu, X, PackageSearch, AlertCircle, Cpu, Download, Lock, CalendarDays, DollarSign, PieChart } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, setDoc, deleteDoc, getDocs, where, writeBatch, getDoc, increment } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db, storage, auth } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import KanbanBoard from './components/KanbanBoard';
 import TimeClock from './components/TimeClock';
 import AttendanceLog from './components/AttendanceLog';
@@ -18,8 +19,8 @@ import Conferencia from './components/Conferencia';
 import LoginView from './components/LoginView';
 import { AppTab, Task, AttendanceEntry, SystemUser, BranchLocation, ProductShortage, TaskStatus, TaskEvidence } from './types';
 import { versionData } from './version';
-import { ToastProvider, useToast } from './components/Toast';
-import { hashPassword, verifyPassword, generateSessionToken, safeRandomUUID } from './utils/crypto';
+import { ToastProvider } from './components/Toast';
+import { safeRandomUUID } from './utils/crypto';
 
 const App: React.FC = () => {
   const [users, setUsers] = useState<SystemUser[]>([]);
@@ -46,33 +47,6 @@ const App: React.FC = () => {
     console.error(`${title}:`, message);
   }, []);
 
-  // --- RESTAURAR SESSÃO DO LOCALSTORAGE ---
-  // Executado uma única vez após os usuários serem carregados
-  useEffect(() => {
-    if (users.length === 0 || isLoggedIn) return;
-    try {
-      const stored = localStorage.getItem('pdc_session');
-      if (stored) {
-        const { email, sessionToken } = JSON.parse(stored);
-        if (email && sessionToken) {
-          const user = users.find(
-            u => u.email.toLowerCase() === email.toLowerCase() &&
-                 u.sessionToken === sessionToken &&
-                 u.active
-          );
-          if (user) {
-            setCurrentUser(user);
-            setIsLoggedIn(true);
-            setActiveTab(user.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
-          } else {
-            localStorage.removeItem('pdc_session');
-          }
-        }
-      }
-    } catch {
-      localStorage.removeItem('pdc_session');
-    }
-  }, [users, isLoggedIn]);
 
   // --- LÓGICA DE BLOQUEIO POR FALTA DE PONTO ---
   // NOVA LÓGICA: Baseada no status do turno (Aberto/Fechado), não na data.
@@ -189,7 +163,6 @@ const App: React.FC = () => {
       } else {
         setUsers(usersData);
       }
-      setIsInitializing(false);
     }, (err) => { logError("Erro Usuários", err); setIsInitializing(false); });
 
     const unsubTasks = onSnapshot(query(collection(db, 'tasks'), orderBy('startDate', 'asc')), (snapshot) => {
@@ -210,15 +183,40 @@ const App: React.FC = () => {
       }
     });
 
-    return () => { 
+    return () => {
       unsubLocations();
-      unsubUsers(); 
-      unsubTasks(); 
-      unsubShortages(); 
-      unsubAttendance(); 
+      unsubUsers();
+      unsubTasks();
+      unsubShortages();
+      unsubAttendance();
       unsubSettings();
     };
   }, [logError]);
+
+  useEffect(() => {
+    if (users.length === 0) return;
+
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userDoc = users.find(u => u.firebaseUid === firebaseUser.uid);
+        if (userDoc && userDoc.active) {
+          setCurrentUser(userDoc);
+          setIsLoggedIn(true);
+          setActiveTab(userDoc.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
+        } else {
+          await signOut(auth);
+          setCurrentUser(null);
+          setIsLoggedIn(false);
+        }
+      } else {
+        setCurrentUser(null);
+        setIsLoggedIn(false);
+      }
+      setIsInitializing(false);
+    });
+
+    return () => unsubAuth();
+  }, [users]);
 
   const handleUpdateTaskStatus = async (id: string, status: TaskStatus, evidencePhotos?: {requirementId: string, title: string, data: string}[]) : Promise<string[]> => {
     const successfulUploadIds: string[] = [];
@@ -424,34 +422,13 @@ const App: React.FC = () => {
     }
   };
 
-  const handleLogin = async (email: string, plainPassword: string, remember: boolean) => {
-    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.active);
-    if (!user) { alert('Login inválido.'); return; }
-
-    const isValid = await verifyPassword(plainPassword, user.password || '');
-    if (!isValid) { alert('Login inválido.'); return; }
-
-    // Migração on-the-fly: se senha ainda é texto puro, salva o hash
-    const isLegacy = (user.password || '').length !== 64;
-    if (isLegacy) {
-      const hashed = await hashPassword(plainPassword);
-      await updateDoc(doc(db, 'users', user.id), { password: hashed });
-    }
-
-    // Sessão segura com token
-    if (remember) {
-      const token = generateSessionToken();
-      await updateDoc(doc(db, 'users', user.id), { sessionToken: token });
-      localStorage.setItem('pdc_session', JSON.stringify({ email: email.toLowerCase(), sessionToken: token }));
-    }
-
-    setCurrentUser(user);
-    setIsLoggedIn(true);
-    setActiveTab(user.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
+  const handleLogout = async () => {
+    localStorage.removeItem('pdc_session');
+    await signOut(auth);
   };
 
   if (isInitializing) return <div className="min-h-screen bg-amber-950 flex items-center justify-center flex-col gap-4 text-amber-200"><Beer className="animate-bounce w-12 h-12" /><p className="font-black text-xs uppercase tracking-widest">Sincronizando...</p></div>;
-  if (!isLoggedIn || !currentUser) return <LoginView onLogin={handleLogin} />;
+  if (!isLoggedIn || !currentUser) return <LoginView />;
 
   return (
     <ToastProvider>
@@ -513,7 +490,7 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-x-hidden overflow-y-auto flex flex-col w-full relative">
         <header className="bg-white h-16 border-b flex items-center justify-between px-4 md:px-8 sticky top-0 z-20">
           <div className="flex items-center gap-3"><button onClick={() => setIsSidebarOpen(true)} className="p-2 md:hidden text-slate-600"><Menu size={26} /></button><h2 className="text-sm md:text-lg font-black text-slate-800 uppercase tracking-tight">{activeTab.toUpperCase()}</h2></div>
-          <button onClick={() => { localStorage.removeItem('pdc_session'); setIsLoggedIn(false); setCurrentUser(null); }} className="flex items-center gap-2 px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl font-bold transition-all text-xs md:text-sm"><LogOut size={18} /> <span>Sair</span></button>
+          <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl font-bold transition-all text-xs md:text-sm"><LogOut size={18} /> <span>Sair</span></button>
         </header>
         <div className="p-4 md:p-8 flex-1 w-full max-w-[100vw] flex flex-col min-h-full">
           <div className="flex-1">
