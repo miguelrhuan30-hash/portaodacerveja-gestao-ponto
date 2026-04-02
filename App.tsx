@@ -324,7 +324,17 @@ const App: React.FC = () => {
         let currentEnd = new Date(task.endDate);
         const duration = task.endDate - task.startDate;
 
-        for (let i = 0; i < 20; i++) {
+        const maxOccurrences = (() => {
+          const daysPerOccurrence =
+            task.recurrence.type === 'DIARIA'    ? 1  :
+            task.recurrence.type === 'SEMANAL'   ? 7  :
+            task.recurrence.type === 'QUINZENAL' ? 14 :
+            task.recurrence.type === 'MENSAL'    ? 30 : 1;
+          const horizon = task.recurrence.horizon ?? 30;
+          return Math.min(100, Math.ceil(horizon / daysPerOccurrence));
+        })();
+
+        for (let i = 0; i < maxOccurrences; i++) {
           const newTask = {
             ...task,
             id: safeRandomUUID(),

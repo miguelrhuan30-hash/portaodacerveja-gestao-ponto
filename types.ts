@@ -52,6 +52,7 @@ export interface Task {
   recurrence: {
     type: RecurrenceType;
     groupId?: string; // Para identificar tarefas que pertencem à mesma série
+    horizon?: number; // Dias a cobrir na geração de recorrências
   };
   
   createdAt: number;
