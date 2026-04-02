@@ -18,6 +18,8 @@ import Conferencia from './components/Conferencia';
 import LoginView from './components/LoginView';
 import { AppTab, Task, AttendanceEntry, SystemUser, BranchLocation, ProductShortage, TaskStatus, TaskEvidence } from './types';
 import { versionData } from './version';
+import { ToastProvider, useToast } from './components/Toast';
+import { hashPassword, verifyPassword, generateSessionToken, safeRandomUUID } from './utils/crypto';
 
 const App: React.FC = () => {
   const [users, setUsers] = useState<SystemUser[]>([]);
@@ -51,15 +53,20 @@ const App: React.FC = () => {
     try {
       const stored = localStorage.getItem('pdc_session');
       if (stored) {
-        const { email, password } = JSON.parse(stored);
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-        if (user && user.active) {
-          setCurrentUser(user);
-          setIsLoggedIn(true);
-          setActiveTab(user.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
-        } else {
-          // Sessão inválida, limpa
-          localStorage.removeItem('pdc_session');
+        const { email, sessionToken } = JSON.parse(stored);
+        if (email && sessionToken) {
+          const user = users.find(
+            u => u.email.toLowerCase() === email.toLowerCase() &&
+                 u.sessionToken === sessionToken &&
+                 u.active
+          );
+          if (user) {
+            setCurrentUser(user);
+            setIsLoggedIn(true);
+            setActiveTab(user.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
+          } else {
+            localStorage.removeItem('pdc_session');
+          }
         }
       }
     } catch {
@@ -312,7 +319,7 @@ const App: React.FC = () => {
         await addDoc(collection(db, 'tasks'), task);
       } else {
         const batch = writeBatch(db);
-        const groupId = task.recurrence.groupId || Math.random().toString(36).substr(2, 9);
+        const groupId = task.recurrence.groupId || safeRandomUUID();
         let currentStart = new Date(task.startDate);
         let currentEnd = new Date(task.endDate);
         const duration = task.endDate - task.startDate;
@@ -320,7 +327,7 @@ const App: React.FC = () => {
         for (let i = 0; i < 20; i++) {
           const newTask = {
             ...task,
-            id: Math.random().toString(36).substr(2, 9),
+            id: safeRandomUUID(),
             startDate: currentStart.getTime(),
             endDate: currentEnd.getTime(),
             recurrence: { ...task.recurrence, groupId }
@@ -407,17 +414,37 @@ const App: React.FC = () => {
     }
   };
 
+  const handleLogin = async (email: string, plainPassword: string, remember: boolean) => {
+    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.active);
+    if (!user) { alert('Login inválido.'); return; }
+
+    const isValid = await verifyPassword(plainPassword, user.password || '');
+    if (!isValid) { alert('Login inválido.'); return; }
+
+    // Migração on-the-fly: se senha ainda é texto puro, salva o hash
+    const isLegacy = (user.password || '').length !== 64;
+    if (isLegacy) {
+      const hashed = await hashPassword(plainPassword);
+      await updateDoc(doc(db, 'users', user.id), { password: hashed });
+    }
+
+    // Sessão segura com token
+    if (remember) {
+      const token = generateSessionToken();
+      await updateDoc(doc(db, 'users', user.id), { sessionToken: token });
+      localStorage.setItem('pdc_session', JSON.stringify({ email: email.toLowerCase(), sessionToken: token }));
+    }
+
+    setCurrentUser(user);
+    setIsLoggedIn(true);
+    setActiveTab(user.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
+  };
+
   if (isInitializing) return <div className="min-h-screen bg-amber-950 flex items-center justify-center flex-col gap-4 text-amber-200"><Beer className="animate-bounce w-12 h-12" /><p className="font-black text-xs uppercase tracking-widest">Sincronizando...</p></div>;
-  if (!isLoggedIn || !currentUser) return <LoginView onLogin={(e, p, r) => {
-    const user = users.find(u => u.email.toLowerCase() === e.toLowerCase() && u.password === p);
-    if (user && user.active) {
-      if (r) localStorage.setItem('pdc_session', JSON.stringify({ email: e.toLowerCase(), password: p }));
-      setCurrentUser(user); setIsLoggedIn(true);
-      setActiveTab(user.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
-    } else alert("Login inválido.");
-  }} />;
+  if (!isLoggedIn || !currentUser) return <LoginView onLogin={handleLogin} />;
 
   return (
+    <ToastProvider>
     <div className="flex h-screen bg-slate-50 overflow-hidden relative">
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden" onClick={() => setIsSidebarOpen(false)} />}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-amber-950 text-white flex flex-col shadow-2xl transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -503,6 +530,7 @@ const App: React.FC = () => {
         </div>
       </main>
     </div>
+    </ToastProvider>
   );
 };
 export default App;
