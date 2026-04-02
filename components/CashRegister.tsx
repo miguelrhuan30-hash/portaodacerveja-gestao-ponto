@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { DollarSign, Lock, Unlock, Save, AlertCircle, Clock, FileText, CheckCircle2, Coins, Plus, TrendingDown, TrendingUp, AlertTriangle, Image as ImageIcon, X, UploadCloud } from 'lucide-react';
 import { SystemUser, CashSession, CashEvent, CashEventType } from '../types';
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, orderBy, onSnapshot } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../firebase';
 
@@ -35,45 +35,42 @@ const CashRegister: React.FC<CashRegisterProps> = ({ currentUser }) => {
   });
 
   useEffect(() => {
-    fetchCurrentSession();
-  }, [currentUser]);
-
-  const fetchCurrentSession = async () => {
     setIsLoading(true);
-    try {
-      // Busca sessão ABERTA do usuário
-      const q = query(
-        collection(db, 'cash_sessions'),
-        where('userId', '==', currentUser.id),
-        where('status', '==', 'OPEN')
-      );
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const docData = snapshot.docs[0];
-        const session = { id: docData.id, ...docData.data() } as CashSession;
-        setCurrentSession(session);
-        fetchEvents(session.id);
-      } else {
+
+    // Listener da sessão aberta do usuário
+    const sessionQuery = query(
+      collection(db, 'cash_sessions'),
+      where('userId', '==', currentUser.id),
+      where('status', '==', 'OPEN')
+    );
+
+    const unsubSession = onSnapshot(sessionQuery, async (snapshot) => {
+      if (snapshot.empty) {
         setCurrentSession(null);
         setEvents([]);
+        setIsLoading(false);
+        return;
       }
-    } catch (e) {
-      console.error("Erro ao buscar sessão de caixa:", e);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
-  const fetchEvents = async (sessionId: string) => {
-    try {
-      const q = query(collection(db, 'cash_sessions', sessionId, 'events'), orderBy('createdAt', 'desc'));
-      const snapshot = await getDocs(q);
-      const fetchedEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CashEvent));
-      setEvents(fetchedEvents);
-    } catch (error) {
-      console.error("Erro ao buscar eventos:", error);
-    }
-  };
+      const sessionDoc = snapshot.docs[0];
+      const session = { id: sessionDoc.id, ...sessionDoc.data() } as CashSession;
+      setCurrentSession(session);
+
+      // Buscar eventos da sessão
+      const eventsQuery = query(
+        collection(db, 'cash_sessions', session.id, 'events'),
+        orderBy('createdAt', 'desc')
+      );
+      const eventsSnap = await getDocs(eventsQuery);
+      setEvents(eventsSnap.docs.map(d => ({ id: d.id, ...d.data() } as CashEvent)));
+      setIsLoading(false);
+    }, (error) => {
+      console.error('[CashRegister] Erro no listener:', error);
+      setIsLoading(false);
+    });
+
+    return () => unsubSession();
+  }, [currentUser.id]);
 
   const handleOpenCash = async () => {
     if (!inputValue) return alert("Informe o valor de abertura (Fundo de Caixa).");
@@ -92,7 +89,6 @@ const CashRegister: React.FC<CashRegisterProps> = ({ currentUser }) => {
       };
 
       await addDoc(collection(db, 'cash_sessions'), newSession);
-      await fetchCurrentSession();
       setInputValue('');
     } catch (e: any) {
       alert("Erro ao abrir caixa: " + e.message);
@@ -160,8 +156,6 @@ const CashRegister: React.FC<CashRegisterProps> = ({ currentUser }) => {
       };
 
       await addDoc(collection(db, 'cash_sessions', currentSession.id, 'events'), event);
-      
-      await fetchEvents(currentSession.id);
       setShowEventModal(false);
       setNewEventData({ type: 'SANGRIA', amount: '', description: '', file: null });
 
