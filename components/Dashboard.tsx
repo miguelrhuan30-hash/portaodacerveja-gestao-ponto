@@ -42,12 +42,27 @@ const Dashboard: React.FC<DashboardProps> = ({ users, attendance, tasks, current
   );
 
   const kpis = useMemo(() => {
+    const periodAttendance = attendance.filter(l => l.timestamp >= startDate && l.timestamp <= endDate);
+    const periodTasks = tasks.filter(t => t.completedAt && t.completedAt >= startDate && t.completedAt <= endDate);
+
+    const logsByUser = new Map<string, AttendanceEntry[]>();
+    for (const l of periodAttendance) {
+      const arr = logsByUser.get(l.employeeId);
+      if (arr) arr.push(l); else logsByUser.set(l.employeeId, [l]);
+    }
+
+    const taskCountByUser = new Map<string, number>();
+    for (const t of periodTasks) {
+      for (const uid of t.assignedUserIds) {
+        taskCountByUser.set(uid, (taskCountByUser.get(uid) ?? 0) + 1);
+      }
+    }
+
+    const totalDays = Math.ceil((endDate - startDate) / 86_400_000);
+    const workDays = Math.ceil(totalDays * 5 / 7);
+
     return activeUsers.map(user => {
-      const userLogs = attendance.filter(l =>
-        l.employeeId === user.id &&
-        l.timestamp >= startDate &&
-        l.timestamp <= endDate
-      );
+      const userLogs = logsByUser.get(user.id) ?? [];
       const entries = userLogs.filter(l => l.type === 'ENTRADA').sort((a,b) => a.timestamp - b.timestamp);
       const exits   = userLogs.filter(l => l.type === 'SAIDA').sort((a,b) => a.timestamp - b.timestamp);
       let hoursWorked = 0;
@@ -56,22 +71,14 @@ const Dashboard: React.FC<DashboardProps> = ({ users, attendance, tasks, current
         if (exit) hoursWorked += (exit.timestamp - entry.timestamp) / 3_600_000;
       });
       const workedDays = new Set(userLogs.map(l => l.dateStr || new Date(l.timestamp).toDateString())).size;
-      const totalDays = Math.ceil((endDate - startDate) / 86_400_000);
-      const workDays = Math.ceil(totalDays * 5 / 7);
       const absences = Math.max(0, workDays - workedDays);
       const punctuality = workedDays > 0 ? Math.round((workedDays / Math.max(workDays, 1)) * 100) : 0;
-      const userTasks = tasks.filter(t =>
-        t.assignedUserIds.includes(user.id) &&
-        t.completedAt &&
-        t.completedAt >= startDate &&
-        t.completedAt <= endDate
-      );
       return {
         userId: user.id,
         name: user.name,
         avatar: user.avatar,
         hoursWorked: Math.round(hoursWorked * 10) / 10,
-        tasksCompleted: userTasks.length,
+        tasksCompleted: taskCountByUser.get(user.id) ?? 0,
         absences,
         points: user.points || 0,
         punctualityRate: punctuality,

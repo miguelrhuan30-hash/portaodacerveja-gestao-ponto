@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, MapPin, CheckCircle2, RefreshCw, Clock, AlertTriangle, ArrowRight, ScanFace, ShieldCheck, X, Satellite, RotateCcw, Map as MapIcon, ExternalLink, Ruler, LogOut, LogIn, Lock } from 'lucide-react';
 import { AttendanceEntry, SystemUser, BranchLocation } from '../types';
+import { safeRandomUUID } from '../utils/crypto';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -252,7 +253,7 @@ const TimeClock: React.FC<TimeClockProps> = ({ currentUser, locations, lastEntry
     }
 
     onPunch({
-      id: Math.random().toString(36).substr(2, 9),
+      id: safeRandomUUID(),
       employeeId: currentUser.id,
       employeeName: currentUser.name,
       type: punchType,

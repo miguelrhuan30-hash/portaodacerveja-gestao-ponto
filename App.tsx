@@ -49,8 +49,7 @@ const App: React.FC = () => {
   }, []);
 
 
-  // --- LÓGICA DE BLOQUEIO POR FALTA DE PONTO ---
-  // NOVA LÓGICA: Baseada no status do turno (Aberto/Fechado), não na data.
+  // Bloqueia acesso a outras abas enquanto funcionário não registrar entrada do turno
   const isAttendanceLocked = useMemo(() => {
     // 1. Se não for funcionário, nunca bloqueia
     if (!currentUser || currentUser.role !== 'EMPLOYEE')
@@ -84,13 +83,14 @@ const App: React.FC = () => {
     if (currentUser && users.length > 0) {
       const liveUserData = users.find(u => u.id === currentUser.id);
       
-      // Se encontrou o usuário e houve mudança nos dados (ex: avatar novo)
-      if (liveUserData) {
-         // Usamos JSON.stringify para comparar profundamente e evitar loops infinitos se o objeto for idêntico
-         if (JSON.stringify(liveUserData) !== JSON.stringify(currentUser)) {
-            console.log("Sincronizando dados do usuário atual...");
-            setCurrentUser(liveUserData);
-         }
+      if (liveUserData && (
+        liveUserData.avatar !== currentUser.avatar ||
+        liveUserData.name !== currentUser.name ||
+        liveUserData.points !== currentUser.points ||
+        liveUserData.role !== currentUser.role ||
+        liveUserData.active !== currentUser.active
+      )) {
+        setCurrentUser(liveUserData);
       }
     }
   }, [users, currentUser]);

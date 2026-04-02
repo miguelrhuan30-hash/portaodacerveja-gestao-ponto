@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { CheckCircle2, XCircle, AlertTriangle, Info, X } from 'lucide-react';
+import { safeRandomUUID } from '../utils/crypto';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
@@ -38,7 +39,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const toast = useCallback((message: string, type: ToastType = 'info', duration = 4000) => {
-    const id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString();
+    const id = safeRandomUUID();
     setToasts(prev => [...prev.slice(-4), { id, type, message, duration }]);
   }, []);
 
