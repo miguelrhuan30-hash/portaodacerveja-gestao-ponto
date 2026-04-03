@@ -4,7 +4,7 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'port-o-da-cerveja-gest-o-ponto'
+      - 'portao-cerveja-erp'
       - '--source=.'
       - '--region=us-west1'
       - '--platform=managed'
