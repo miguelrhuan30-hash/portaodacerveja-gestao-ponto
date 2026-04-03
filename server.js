@@ -80,6 +80,17 @@ app.post('/api/analyze-face', rateLimit(10, 60_000), async (req, res) => {
 });
 
 // ── Arquivos estáticos e SPA ──────────────────────────────────────
+// Servir arquivos .tsx e .ts com MIME type correto para ESM importmap
+app.get('*.tsx', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.sendFile(path.join(__dirname, req.path));
+});
+
+app.get('*.ts', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+  res.sendFile(path.join(__dirname, req.path));
+});
+
 app.use(express.static(__dirname));
 
 app.get('*', (req, res) => {
