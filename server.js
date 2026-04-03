@@ -8,52 +8,8 @@ const port = process.env.PORT || 8080;
 
 // ── Segurança: headers HTTP ──────────────────────────────────────
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      scriptSrc: [
-        "'self'",
-        "'unsafe-inline'",
-        "'unsafe-eval'",
-        "https://cdn.tailwindcss.com",
-        "https://cdnjs.cloudflare.com",
-      ],
-      styleSrc: [
-        "'self'",
-        "'unsafe-inline'",
-        "https://fonts.googleapis.com",
-        "https://cdn.tailwindcss.com",
-      ],
-      fontSrc: [
-        "'self'",
-        "https://fonts.googleapis.com",
-        "https://fonts.gstatic.com",
-      ],
-      imgSrc: [
-        "'self'",
-        "data:",
-        "blob:",
-        "https://storage.googleapis.com",
-        "https://cdn-icons-png.flaticon.com",
-        "https://lh3.googleusercontent.com",
-      ],
-      connectSrc: [
-        "'self'",
-        "https://firestore.googleapis.com",
-        "https://firebase.googleapis.com",
-        "https://firebasestorage.googleapis.com",
-        "https://storage.googleapis.com",
-        "https://*.googleapis.com",
-        "https://identitytoolkit.googleapis.com",
-        "https://securetoken.googleapis.com",
-        "wss://*.firebaseio.com",
-      ],
-      mediaSrc: ["'self'", "blob:"],
-      workerSrc: ["'self'", "blob:"],
-      frameSrc: ["'self'", "https://accounts.google.com"],
-    },
-  },
-  crossOriginEmbedderPolicy: false, // necessário para getUserMedia (câmera)
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
 }));
 
 app.use(express.json({ limit: '3mb' }));
