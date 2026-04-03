@@ -199,7 +199,11 @@ const App: React.FC = () => {
 
     const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        console.log('[AUTH] firebaseUser.uid:', firebaseUser.uid);
+        console.log('[AUTH] users carregados:', users.length);
+        console.log('[AUTH] users com firebaseUid:', users.map(u => ({id: u.id, firebaseUid: u.firebaseUid, email: u.email})));
         const userDoc = users.find(u => u.firebaseUid === firebaseUser.uid);
+        console.log('[AUTH] userDoc encontrado:', userDoc?.email || 'NÃO ENCONTRADO');
         if (userDoc && userDoc.active) {
           setCurrentUser(userDoc);
           setIsLoggedIn(true);
