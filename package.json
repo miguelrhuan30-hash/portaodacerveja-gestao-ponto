@@ -12,7 +12,8 @@
     "jspdf-autotable": "^3.8.2",
     "lucide-react": "^1.7.0",
     "react-scripts": "5.0.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "yaml": "^2.8.3"
   },
   "scripts": {
     "start": "node server.js",
