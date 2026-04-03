@@ -52,6 +52,7 @@ export interface Task {
   recurrence: {
     type: RecurrenceType;
     groupId?: string; // Para identificar tarefas que pertencem à mesma série
+    horizon?: number; // Dias a cobrir na geração de recorrências
   };
   
   createdAt: number;
@@ -202,10 +203,13 @@ export interface SystemUser {
   timeBankBalance?: number; // Saldo atual acumulado (em horas decimais)
   bankBalance?: number; // Saldo em minutos (backup/precisão)
   points: number;
+  firebaseUid?: string;
+  fcmToken?: string;
 }
 
 export enum AppTab {
   BOARD = 'tarefas',
+  DASHBOARD = 'dashboard',
   ATTENDANCE = 'ponto',
   REPORTS = 'gestao',
   USERS = 'equipe',

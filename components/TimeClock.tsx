@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Camera, MapPin, CheckCircle2, RefreshCw, Clock, AlertTriangle, ArrowRight, ScanFace, ShieldCheck, X, Satellite, RotateCcw, Map as MapIcon, ExternalLink, Ruler, LogOut, LogIn, Lock } from 'lucide-react';
 import { AttendanceEntry, SystemUser, BranchLocation } from '../types';
-import { GoogleGenAI, Type } from "@google/genai";
+import { safeRandomUUID } from '../utils/crypto';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -42,13 +42,17 @@ const TimeClock: React.FC<TimeClockProps> = ({ currentUser, locations, lastEntry
       const updateTimer = () => {
         const now = Date.now();
         const diff = now - lastEntry.timestamp;
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        setCurrentShiftDuration(`${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m`);
+        const hours   = Math.floor(diff / 3_600_000);
+        const minutes = Math.floor((diff % 3_600_000) / 60_000);
+        const seconds = Math.floor((diff % 60_000) / 1_000);
+        setCurrentShiftDuration(
+          `${hours.toString().padStart(2, '0')}h ` +
+          `${minutes.toString().padStart(2, '0')}m ` +
+          `${seconds.toString().padStart(2, '0')}s`
+        );
       };
-      
-      updateTimer(); // Executa imediatamente
-      interval = setInterval(updateTimer, 60000);
+      updateTimer();
+      interval = setInterval(updateTimer, 30_000);
     } else {
       setCurrentShiftDuration('00:00');
     }
@@ -179,60 +183,19 @@ const TimeClock: React.FC<TimeClockProps> = ({ currentUser, locations, lastEntry
     });
   };
 
-  const performFaceValidation = async (capturedPhotoBase64: string): Promise<{ success: boolean; message: string }> => {
-    if (!currentUser.avatar) return { success: false, message: "Sem foto base." };
-    
-    // API key injetada pelo servidor via meta tag ou variável global
-    const apiKey = (window as any).__GEMINI_API_KEY__ || '';
-    if (!apiKey) {
-      console.warn('[TimeClock] GEMINI_API_KEY não configurada. Biometria desativada.');
-      // Fallback gracioso: aceita o ponto sem validação biométrica por IA
-      return { success: true, message: "OK (sem biometria)" };
+  const analyzeImage = async (base64Image: string): Promise<{ isHuman: boolean; confidence: number; details: string }> => {
+    const response = await fetch('/api/analyze-face', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ imageBase64: base64Image }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) throw new Error('Muitas tentativas. Aguarde 1 minuto.');
+      throw new Error('Falha na análise biométrica');
     }
 
-    try {
-      const ai = new GoogleGenAI({ apiKey });
-      let basePhotoData = "";
-      if (currentUser.avatar.startsWith('http')) {
-        setAnalysisSteps("Baixando referência...");
-        basePhotoData = await getBase64FromUrl(currentUser.avatar);
-      } else {
-        basePhotoData = currentUser.avatar.includes(',') ? currentUser.avatar.split(',')[1] : currentUser.avatar;
-      }
-      const currentPhotoData = capturedPhotoBase64.split(',')[1];
-      setAnalysisSteps("Validando identidade...");
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.0-flash-exp',
-        contents: [
-          {
-            parts: [
-              { inlineData: { data: basePhotoData, mimeType: 'image/jpeg' } },
-              { inlineData: { data: currentPhotoData, mimeType: 'image/jpeg' } },
-              { text: "Compare estas duas fotos. A primeira é o cadastro oficial. A segunda é a tentativa atual. Verifique se é a mesma pessoa de forma rigorosa." }
-            ]
-          }
-        ],
-        config: { 
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              match: { type: Type.BOOLEAN },
-              clearFace: { type: Type.BOOLEAN },
-              reason: { type: Type.STRING }
-            },
-            required: ["match", "clearFace", "reason"]
-          }
-        }
-      });
-      const result = JSON.parse(response.text || '{}');
-      if (!result.clearFace) return { success: false, message: result.reason || "Rosto não detectado." };
-      if (!result.match) return { success: false, message: "Identidade não confirmada." };
-      return { success: true, message: "OK" };
-    } catch (error) {
-      console.error('[TimeClock] Erro na validação biométrica:', error);
-      return { success: false, message: "Falha na biometria. Tente novamente." };
-    }
+    return response.json();
   };
 
   const handlePunch = async () => {
@@ -273,17 +236,24 @@ const TimeClock: React.FC<TimeClockProps> = ({ currentUser, locations, lastEntry
     }
 
     setStatus('PROCESSING');
-    const validation = await performFaceValidation(photo);
-
-    if (!validation.success) {
+    setAnalysisSteps("Validando identidade...");
+    try {
+      const analysis = await analyzeImage(photo);
+      if (!analysis.isHuman) {
+        setStatus('ERROR');
+        setErrorMsg(analysis.details || "Rosto não reconhecido.");
+        setTimeout(() => { setStatus('IDLE'); setPhoto(null); }, 4000);
+        return;
+      }
+    } catch (err: any) {
       setStatus('ERROR');
-      setErrorMsg(validation.message);
+      setErrorMsg(err.message || "Falha na biometria. Tente novamente.");
       setTimeout(() => { setStatus('IDLE'); setPhoto(null); }, 4000);
       return;
     }
 
     onPunch({
-      id: Math.random().toString(36).substr(2, 9),
+      id: safeRandomUUID(),
       employeeId: currentUser.id,
       employeeName: currentUser.name,
       type: punchType,

@@ -1,13 +1,16 @@
-
 export const versionData = {
-  "version": "v76.0",
-  "deployDate": "2026-03-29",
+  "version": "v78.0",
+  "deployDate": "2026-04-03",
   "lastChanges": [
-    "Correção crítica: modelo Gemini corrigido para gemini-2.0-flash-exp.",
-    "Correção: mensagem de sucesso no registro de ponto estava invertida.",
-    "Biometria com fallback gracioso quando API key não configurada.",
-    "API key do Gemini via variável de ambiente no Cloud Run.",
-    "Cache do Service Worker atualizado para invalidar versões antigas.",
-    "Restauração de sessão ao recarregar a página."
+    "Firebase Authentication real — login via signInWithEmailAndPassword.",
+    "Google Sign-In adicionado — com bloqueio e notificação de acesso não autorizado.",
+    "Firestore Security Rules completas com request.auth por role.",
+    "Script de migração automática de usuários existentes para Firebase Auth.",
+    "Dashboard de produtividade com KPIs por colaborador e filtros de período.",
+    "Exportação de espelho de ponto em PDF (jsPDF + autoTable).",
+    "UserManagement: novos colaboradores criados no Firebase Auth automaticamente.",
+    "Correção de import @google/genai em AttendanceReports.tsx.",
+    "Performance: Dashboard usa pre-grouping O(n) em vez de O(n×m).",
+    "Qualidade: crypto.randomUUID() em Toast e TimeClock."
   ]
 };

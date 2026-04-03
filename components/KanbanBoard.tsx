@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Plus, Clock, X, Check, Timer, TrendingUp, Camera, RefreshCw, Trash2, ListChecks, PlusCircle, Calendar as CalendarIcon, Grid, ChevronLeft, ChevronRight, Info, CheckCircle2, AlertCircle, CalendarDays, UploadCloud, Save, Image as ImageIcon, ExternalLink, Award, PartyPopper, ArrowRight } from 'lucide-react';
 import { Task, TaskStatus, SystemUser, RecurrenceType, TaskPhotoRequirement } from '../types';
+import { safeRandomUUID } from '../utils/crypto';
 
 interface KanbanBoardProps {
   tasks: Task[];
@@ -47,11 +48,13 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
     }
   }, [tasks]);
 
+  const [recurrenceHorizon, setRecurrenceHorizon] = useState<number>(30);
+
   const [newTask, setNewTask] = useState({
     title: '',
     description: '',
     requirePhoto: true,
-    photoRequirements: [{ id: Math.random().toString(36).substr(2, 9), title: 'Geral da Atividade' }],
+    photoRequirements: [{ id: safeRandomUUID(), title: 'Geral da Atividade' }],
     startDate: new Date().toISOString().slice(0, 16),
     endDate: new Date(Date.now() + 3600000).toISOString().slice(0, 16),
     allDay: false,
@@ -224,7 +227,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
     if (!newTask.title) return alert("Título é obrigatório.");
     
     onAddTask({
-      id: Math.random().toString(36).substr(2, 9),
+      id: safeRandomUUID(),
       title: newTask.title,
       description: newTask.description,
       status: 'A_FAZER',
@@ -233,7 +236,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
       startDate: new Date(newTask.startDate).getTime(),
       endDate: new Date(newTask.endDate).getTime(),
       allDay: newTask.allDay,
-      recurrence: newTask.recurrence,
+      recurrence: { ...newTask.recurrence, horizon: recurrenceHorizon },
       createdAt: Date.now(),
       assignedUserIds: newTask.assignedUserIds
     });
@@ -243,7 +246,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
       title: '',
       description: '',
       requirePhoto: true,
-      photoRequirements: [{ id: Math.random().toString(36).substr(2, 9), title: 'Geral da Atividade' }],
+      photoRequirements: [{ id: safeRandomUUID(), title: 'Geral da Atividade' }],
       startDate: new Date().toISOString().slice(0, 16),
       endDate: new Date(Date.now() + 3600000).toISOString().slice(0, 16),
       allDay: false,
@@ -646,6 +649,20 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
                     <option value="QUINZENAL">Quinzenalmente</option>
                     <option value="MENSAL">Mensalmente</option>
                   </select>
+                  {newTask.recurrence.type !== 'NENHUMA' && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <label className="text-xs font-medium text-slate-600">Repetir por</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={recurrenceHorizon}
+                        onChange={e => setRecurrenceHorizon(Math.min(365, Math.max(1, parseInt(e.target.value) || 1)))}
+                        className="w-20 border rounded-lg px-2 py-1 text-sm text-center"
+                      />
+                      <span className="text-xs text-slate-500">dias</span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -691,7 +708,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ tasks, users, onAddTask, onUp
                            {newTask.photoRequirements.length > 1 && <button type="button" onClick={() => setNewTask({...newTask, photoRequirements: newTask.photoRequirements.filter((_, i) => i !== idx)})} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><X size={16}/></button>}
                         </div>
                       ))}
-                      <button type="button" onClick={() => setNewTask({...newTask, photoRequirements: [...newTask.photoRequirements, { id: Math.random().toString(36).substr(2, 9), title: '' }]})} className="text-[10px] font-black text-amber-600 uppercase flex items-center gap-1 hover:underline"><PlusCircle size={14}/> Adicionar Foto</button>
+                      <button type="button" onClick={() => setNewTask({...newTask, photoRequirements: [...newTask.photoRequirements, { id: safeRandomUUID(), title: '' }]})} className="text-[10px] font-black text-amber-600 uppercase flex items-center gap-1 hover:underline"><PlusCircle size={14}/> Adicionar Foto</button>
                     </div>
                   )}
                 </div>

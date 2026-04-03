@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Beer, ClipboardList, Clock, Calendar, Users as UsersIcon, LogOut, Menu, X, PackageSearch, AlertCircle, Cpu, Download, Lock, CalendarDays, DollarSign, PieChart } from 'lucide-react';
+import { Beer, ClipboardList, Clock, Calendar, Users as UsersIcon, LogOut, Menu, X, PackageSearch, AlertCircle, Cpu, Download, Lock, CalendarDays, DollarSign, PieChart, TrendingUp } from 'lucide-react';
 import { collection, onSnapshot, addDoc, updateDoc, doc, query, orderBy, setDoc, deleteDoc, getDocs, where, writeBatch, getDoc, increment } from 'firebase/firestore';
 import { ref, uploadString, getDownloadURL } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { db, storage, auth } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 import KanbanBoard from './components/KanbanBoard';
 import TimeClock from './components/TimeClock';
 import AttendanceLog from './components/AttendanceLog';
@@ -16,8 +17,11 @@ import CashRegister from './components/CashRegister';
 import FinancialReports from './components/FinancialReports';
 import Conferencia from './components/Conferencia';
 import LoginView from './components/LoginView';
+import Dashboard from './components/Dashboard';
 import { AppTab, Task, AttendanceEntry, SystemUser, BranchLocation, ProductShortage, TaskStatus, TaskEvidence } from './types';
 import { versionData } from './version';
+import { ToastProvider } from './components/Toast';
+import { safeRandomUUID } from './utils/crypto';
 
 const App: React.FC = () => {
   const [users, setUsers] = useState<SystemUser[]>([]);
@@ -44,31 +48,8 @@ const App: React.FC = () => {
     console.error(`${title}:`, message);
   }, []);
 
-  // --- RESTAURAR SESSÃO DO LOCALSTORAGE ---
-  // Executado uma única vez após os usuários serem carregados
-  useEffect(() => {
-    if (users.length === 0 || isLoggedIn) return;
-    try {
-      const stored = localStorage.getItem('pdc_session');
-      if (stored) {
-        const { email, password } = JSON.parse(stored);
-        const user = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
-        if (user && user.active) {
-          setCurrentUser(user);
-          setIsLoggedIn(true);
-          setActiveTab(user.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
-        } else {
-          // Sessão inválida, limpa
-          localStorage.removeItem('pdc_session');
-        }
-      }
-    } catch {
-      localStorage.removeItem('pdc_session');
-    }
-  }, [users, isLoggedIn]);
 
-  // --- LÓGICA DE BLOQUEIO POR FALTA DE PONTO ---
-  // NOVA LÓGICA: Baseada no status do turno (Aberto/Fechado), não na data.
+  // Bloqueia acesso a outras abas enquanto funcionário não registrar entrada do turno
   const isAttendanceLocked = useMemo(() => {
     // 1. Se não for funcionário, nunca bloqueia
     if (!currentUser || currentUser.role !== 'EMPLOYEE')
@@ -102,13 +83,14 @@ const App: React.FC = () => {
     if (currentUser && users.length > 0) {
       const liveUserData = users.find(u => u.id === currentUser.id);
       
-      // Se encontrou o usuário e houve mudança nos dados (ex: avatar novo)
-      if (liveUserData) {
-         // Usamos JSON.stringify para comparar profundamente e evitar loops infinitos se o objeto for idêntico
-         if (JSON.stringify(liveUserData) !== JSON.stringify(currentUser)) {
-            console.log("Sincronizando dados do usuário atual...");
-            setCurrentUser(liveUserData);
-         }
+      if (liveUserData && (
+        liveUserData.avatar !== currentUser.avatar ||
+        liveUserData.name !== currentUser.name ||
+        liveUserData.points !== currentUser.points ||
+        liveUserData.role !== currentUser.role ||
+        liveUserData.active !== currentUser.active
+      )) {
+        setCurrentUser(liveUserData);
       }
     }
   }, [users, currentUser]);
@@ -182,7 +164,6 @@ const App: React.FC = () => {
       } else {
         setUsers(usersData);
       }
-      setIsInitializing(false);
     }, (err) => { logError("Erro Usuários", err); setIsInitializing(false); });
 
     const unsubTasks = onSnapshot(query(collection(db, 'tasks'), orderBy('startDate', 'asc')), (snapshot) => {
@@ -203,15 +184,40 @@ const App: React.FC = () => {
       }
     });
 
-    return () => { 
+    return () => {
       unsubLocations();
-      unsubUsers(); 
-      unsubTasks(); 
-      unsubShortages(); 
-      unsubAttendance(); 
+      unsubUsers();
+      unsubTasks();
+      unsubShortages();
+      unsubAttendance();
       unsubSettings();
     };
   }, [logError]);
+
+  useEffect(() => {
+    if (users.length === 0) return;
+
+    const unsubAuth = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        const userDoc = users.find(u => u.firebaseUid === firebaseUser.uid);
+        if (userDoc && userDoc.active) {
+          setCurrentUser(userDoc);
+          setIsLoggedIn(true);
+          setActiveTab(userDoc.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
+        } else {
+          await signOut(auth);
+          setCurrentUser(null);
+          setIsLoggedIn(false);
+        }
+      } else {
+        setCurrentUser(null);
+        setIsLoggedIn(false);
+      }
+      setIsInitializing(false);
+    });
+
+    return () => unsubAuth();
+  }, [users]);
 
   const handleUpdateTaskStatus = async (id: string, status: TaskStatus, evidencePhotos?: {requirementId: string, title: string, data: string}[]) : Promise<string[]> => {
     const successfulUploadIds: string[] = [];
@@ -312,15 +318,25 @@ const App: React.FC = () => {
         await addDoc(collection(db, 'tasks'), task);
       } else {
         const batch = writeBatch(db);
-        const groupId = task.recurrence.groupId || Math.random().toString(36).substr(2, 9);
+        const groupId = task.recurrence.groupId || safeRandomUUID();
         let currentStart = new Date(task.startDate);
         let currentEnd = new Date(task.endDate);
         const duration = task.endDate - task.startDate;
 
-        for (let i = 0; i < 20; i++) {
+        const maxOccurrences = (() => {
+          const daysPerOccurrence =
+            task.recurrence.type === 'DIARIA'    ? 1  :
+            task.recurrence.type === 'SEMANAL'   ? 7  :
+            task.recurrence.type === 'QUINZENAL' ? 14 :
+            task.recurrence.type === 'MENSAL'    ? 30 : 1;
+          const horizon = task.recurrence.horizon ?? 30;
+          return Math.min(100, Math.ceil(horizon / daysPerOccurrence));
+        })();
+
+        for (let i = 0; i < maxOccurrences; i++) {
           const newTask = {
             ...task,
-            id: Math.random().toString(36).substr(2, 9),
+            id: safeRandomUUID(),
             startDate: currentStart.getTime(),
             endDate: currentEnd.getTime(),
             recurrence: { ...task.recurrence, groupId }
@@ -407,17 +423,32 @@ const App: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'MASTER') return;
+    const q = query(
+      collection(db, 'access_attempts'),
+      where('notified', '==', false)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      snap.docs.forEach(async (d) => {
+        const attempt = d.data();
+        console.warn(`[Acesso negado] ${attempt.email} tentou entrar via Google`);
+        await updateDoc(doc(db, 'access_attempts', d.id), { notified: true });
+      });
+    });
+    return () => unsub();
+  }, [currentUser]);
+
+  const handleLogout = async () => {
+    localStorage.removeItem('pdc_session');
+    await signOut(auth);
+  };
+
   if (isInitializing) return <div className="min-h-screen bg-amber-950 flex items-center justify-center flex-col gap-4 text-amber-200"><Beer className="animate-bounce w-12 h-12" /><p className="font-black text-xs uppercase tracking-widest">Sincronizando...</p></div>;
-  if (!isLoggedIn || !currentUser) return <LoginView onLogin={(e, p, r) => {
-    const user = users.find(u => u.email.toLowerCase() === e.toLowerCase() && u.password === p);
-    if (user && user.active) {
-      if (r) localStorage.setItem('pdc_session', JSON.stringify({ email: e.toLowerCase(), password: p }));
-      setCurrentUser(user); setIsLoggedIn(true);
-      setActiveTab(user.permissions.canManageTasks ? AppTab.BOARD : AppTab.ATTENDANCE);
-    } else alert("Login inválido.");
-  }} />;
+  if (!isLoggedIn || !currentUser) return <LoginView />;
 
   return (
+    <ToastProvider>
     <div className="flex h-screen bg-slate-50 overflow-hidden relative">
       {isSidebarOpen && <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden" onClick={() => setIsSidebarOpen(false)} />}
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-amber-950 text-white flex flex-col shadow-2xl transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -429,6 +460,14 @@ const App: React.FC = () => {
           {!isAttendanceLocked ? (
             <>
               {currentUser.permissions.canManageTasks && <button onClick={() => { setActiveTab(AppTab.BOARD); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.BOARD ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><ClipboardList size={22} /> <span>Tarefas</span></button>}
+              {currentUser.permissions.canViewReports && (
+                <button onClick={() => { setActiveTab(AppTab.DASHBOARD); setIsSidebarOpen(false); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+                    activeTab === AppTab.DASHBOARD ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'
+                  }`}>
+                  <TrendingUp size={22}/> <span>Dashboard</span>
+                </button>
+              )}
               <button onClick={() => { setActiveTab(AppTab.SHORTAGE); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.SHORTAGE ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><PackageSearch size={22} /> <span>Estoque</span></button>
               {(currentUser.permissions.canViewConferencia || currentUser.permissions.canManageConferencia || currentUser.role === 'ADMIN' || currentUser.role === 'MASTER') && <button onClick={() => { setActiveTab(AppTab.CONFERENCIA); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.CONFERENCIA ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><ClipboardList size={22} /> <span>Conferência</span></button>}
               {currentUser.permissions.canManageCash && <button onClick={() => { setActiveTab(AppTab.CASH); setIsSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${activeTab === AppTab.CASH ? 'bg-amber-600 shadow-lg' : 'hover:bg-amber-900/50 text-amber-100'}`}><DollarSign size={22} /> <span>Caixa</span></button>}
@@ -476,11 +515,14 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-x-hidden overflow-y-auto flex flex-col w-full relative">
         <header className="bg-white h-16 border-b flex items-center justify-between px-4 md:px-8 sticky top-0 z-20">
           <div className="flex items-center gap-3"><button onClick={() => setIsSidebarOpen(true)} className="p-2 md:hidden text-slate-600"><Menu size={26} /></button><h2 className="text-sm md:text-lg font-black text-slate-800 uppercase tracking-tight">{activeTab.toUpperCase()}</h2></div>
-          <button onClick={() => { localStorage.removeItem('pdc_session'); setIsLoggedIn(false); setCurrentUser(null); }} className="flex items-center gap-2 px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl font-bold transition-all text-xs md:text-sm"><LogOut size={18} /> <span>Sair</span></button>
+          <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl font-bold transition-all text-xs md:text-sm"><LogOut size={18} /> <span>Sair</span></button>
         </header>
         <div className="p-4 md:p-8 flex-1 w-full max-w-[100vw] flex flex-col min-h-full">
           <div className="flex-1">
             {activeTab === AppTab.BOARD && <KanbanBoard tasks={tasks} users={users} onAddTask={handleAddTask} onDeleteTask={handleDeleteTask} onUpdateStatus={handleUpdateTaskStatus} currentUser={currentUser} />}
+            {activeTab === AppTab.DASHBOARD && (
+              <Dashboard users={users} attendance={attendance} tasks={tasks} currentUser={currentUser} />
+            )}
             {activeTab === AppTab.SHORTAGE && <ProductShortageComponent 
                 shortages={shortages} 
                 currentUser={currentUser} 
@@ -503,6 +545,7 @@ const App: React.FC = () => {
         </div>
       </main>
     </div>
+    </ToastProvider>
   );
 };
 export default App;

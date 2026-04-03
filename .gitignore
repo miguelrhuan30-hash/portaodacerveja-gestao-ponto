@@ -18,3 +18,10 @@ Thumbs.db
 # Editores
 .vscode/
 *.swp
+
+# Credenciais Firebase — NUNCA commitar
+serviceAccount*.json
+*-firebase-adminsdk-*.json
+
+# Scripts sensíveis (remover após uso)
+scripts/migrate-to-firebase-auth.js

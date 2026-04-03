@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Calendar as CalendarIcon, Users, Clock, History, CheckCircle2, AlertCircle, Archive, Trash2, TrendingUp, Search, Grid, List, ChevronLeft, ChevronRight, MapPin, Save, ShieldCheck, RefreshCw, X, MapPinned, ArrowDownLeft, ArrowUpRight, Edit3, Plus, LogOut, FileText, UploadCloud, AlertTriangle, Image as ImageIcon, Scale, CircleDollarSign, ArrowRightLeft, Paperclip } from 'lucide-react';
 import { AttendanceEntry, SystemUser, BranchLocation, Task, TaskStatus } from '../types';
-import { GoogleGenAI, Type } from "@google/genai";
+import { generatePunchReportPDF } from '../utils/pdf';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage, db } from '../firebase';
 import { addDoc, collection } from 'firebase/firestore';
@@ -434,13 +434,36 @@ const AttendanceReports: React.FC<AttendanceReportsProps> = ({ logs, users, task
              </select>
 
              {(selectedUser !== 'todos' && currentUser?.role !== 'EMPLOYEE') && (
-                <button 
+                <button
                   onClick={() => setShowTimeBankModal(users.find(u => u.id === selectedUser) || null)}
                   className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-emerald-700 transition-colors shadow-md"
                 >
                    <Scale size={16}/> Gerir Banco
                 </button>
              )}
+             {selectedUser !== 'todos' && (() => {
+               const pdfUser = users.find(u => u.id === selectedUser);
+               return pdfUser ? (
+                 <button
+                   onClick={() => {
+                     const [sy, sm, sd] = startDate.split('-').map(Number);
+                     const [ey, em, ed] = endDate.split('-').map(Number);
+                     const sdObj = new Date(sy, sm - 1, sd);
+                     const edObj = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+                     generatePunchReportPDF({
+                       user: pdfUser,
+                       logs: logs.filter(l => l.employeeId === pdfUser.id),
+                       startDate: sdObj,
+                       endDate: edObj,
+                       generatedBy: currentUser?.name ?? 'Sistema',
+                     });
+                   }}
+                   className="px-4 py-2 bg-amber-700 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 hover:bg-amber-800 transition-colors shadow-md"
+                 >
+                   <FileText size={16}/> Exportar PDF
+                 </button>
+               ) : null;
+             })()}
           </div>
       </div>
 
