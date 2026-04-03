@@ -10,11 +10,10 @@ steps:
       - '--platform=managed'
       - '--allow-unauthenticated'
       - '--project=gen-lang-client-0756600199'
-      - '--set-env-vars=GEMINI_API_KEY=$_GEMINI_API_KEY,FIREBASE_SERVICE_ACCOUNT=$_FIREBASE_SERVICE_ACCOUNT'
+      - '--update-env-vars=GEMINI_API_KEY=$_GEMINI_API_KEY'
 
 substitutions:
   _GEMINI_API_KEY: ''
-  _FIREBASE_SERVICE_ACCOUNT: ''
 
 options:
   logging: CLOUD_LOGGING_ONLY
