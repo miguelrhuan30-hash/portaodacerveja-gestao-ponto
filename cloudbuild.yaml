@@ -1,16 +1,16 @@
 steps:
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
     args:
-      - gcloud
-      - run
-      - deploy
-      - port-o-da-cerveja-gest-o-ponto
-      - --source=.
-      - --region=us-west1
-      - --platform=managed
-      - --allow-unauthenticated
-      - --set-env-vars=GEMINI_API_KEY=$_GEMINI_API_KEY
-      - --set-env-vars=FIREBASE_SERVICE_ACCOUNT=$_FIREBASE_SERVICE_ACCOUNT
+      - 'run'
+      - 'deploy'
+      - 'port-o-da-cerveja-gest-o-ponto'
+      - '--source=.'
+      - '--region=us-west1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--project=gen-lang-client-0756600199'
+      - '--set-env-vars=GEMINI_API_KEY=$_GEMINI_API_KEY,FIREBASE_SERVICE_ACCOUNT=$_FIREBASE_SERVICE_ACCOUNT'
 
 substitutions:
   _GEMINI_API_KEY: ''
