@@ -31,17 +31,6 @@ function rateLimit(maxReq, windowMs) {
   };
 }
 
-// ── MIME type correto para ESM importmap (.tsx / .ts) ─────────────
-app.get(/\.tsx$/, (req, res) => {
-  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.sendFile(path.join(__dirname, req.path));
-});
-
-app.get(/\.ts$/, (req, res) => {
-  res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-  res.sendFile(path.join(__dirname, req.path));
-});
-
 // ── Proxy Gemini — análise biométrica ────────────────────────────
 app.post('/api/analyze-face', rateLimit(10, 60_000), async (req, res) => {
   try {
@@ -90,15 +79,18 @@ app.post('/api/analyze-face', rateLimit(10, 60_000), async (req, res) => {
   }
 });
 
-// ── Arquivos estáticos e SPA ──────────────────────────────────────
-app.use(express.static(__dirname));
+// ── Arquivos estáticos (pasta dist compilada pelo Vite) ───────────
+const distPath = path.join(__dirname, 'dist');
+app.use(express.static(distPath));
 
+// ── SPA fallback: todas as rotas retornam index.html ─────────────
 app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(distPath, 'index.html'));
 });
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`✅ Servidor Portão da Cerveja na porta ${port}`);
   console.log(`🔒 Helmet: ativo`);
+  console.log(`📦 Servindo build de: ${distPath}`);
   console.log(`🤖 Gemini proxy: ${process.env.GEMINI_API_KEY ? '✅ Configurado' : '⚠️  Sem API key (fallback ativado)'}`);
 });

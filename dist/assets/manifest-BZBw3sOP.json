@@ -1,0 +1,27 @@
+
+{
+  "id": "/",
+  "short_name": "Portão Gestão",
+  "name": "Portão da Cerveja - Sistema de Gestão",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/931/931949.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/931/931949.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#f8fafc",
+  "display": "standalone",
+  "scope": "/",
+  "theme_color": "#451a03",
+  "orientation": "portrait-primary",
+  "categories": ["productivity", "business"]
+}
