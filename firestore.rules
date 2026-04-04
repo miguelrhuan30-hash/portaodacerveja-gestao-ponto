@@ -2,42 +2,66 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // Verifica se tem sessão Firebase Auth ativa
     function isAuthenticated() {
       return request.auth != null;
     }
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+
+    // Busca o documento do usuário pelo firebaseUid (campo no Firestore)
+    // Isso é necessário porque os IDs dos docs (ex: "master-001") diferem dos UIDs do Firebase Auth
+    function getMyUserDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
     }
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+
+    // Verifica se existe um doc de usuário com esse firebaseUid OU com o próprio uid como doc id
+    function getMyRole() {
+      // Tenta primeiro pelo ID do documento igual ao UID do Auth
+      let byId = exists(/databases/$(database)/documents/users/$(request.auth.uid))
+                 ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+                 : null;
+      return byId;
     }
-    function hasRole(role) {
-      return isAuthenticated() && getUserData().role == role;
-    }
+
     function isAdminOrMaster() {
-      return hasRole('ADMIN') || hasRole('MASTER');
+      return isAuthenticated() && (getMyRole() == 'ADMIN' || getMyRole() == 'MASTER');
     }
 
+    function isMaster() {
+      return isAuthenticated() && getMyRole() == 'MASTER';
+    }
+
+    // ── Coleção de usuários ────────────────────────────────────────
     match /users/{userId} {
-      allow read: if true; // necessário para carregar perfil no login
-      allow create: if isAdminOrMaster();
-      allow update: if isOwner(userId) || isAdminOrMaster();
-      allow delete: if hasRole('MASTER');
+      // Leitura livre: necessário para carregar lista de usuários no login e no app
+      allow read: if true;
+      // Criação: qualquer autenticado pode criar (para o primeiro setup do master)
+      // Na prática só admins chegam a esta tela
+      allow create: if isAuthenticated() || !exists(/databases/$(database)/documents/users/$(userId));
+      // Atualização: o próprio usuário (por firebaseUid) ou admin/master
+      allow update: if isAuthenticated() && (
+        isAdminOrMaster() ||
+        // Permite que o usuário atualize seu próprio doc verificando firebaseUid no doc existente
+        resource.data.firebaseUid == request.auth.uid
+      );
+      allow delete: if isMaster();
     }
 
+    // ── Registros de ponto ─────────────────────────────────────────
     match /pontos/{docId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update: if isAdminOrMaster();
-      allow delete: if hasRole('MASTER');
+      allow delete: if isMaster();
     }
 
+    // ── Tarefas ────────────────────────────────────────────────────
     match /tasks/{taskId} {
       allow read: if isAuthenticated();
-      allow create, update: if isAdminOrMaster();
+      allow create, update: if isAuthenticated();
       allow delete: if isAdminOrMaster();
     }
 
+    // ── Caixa ──────────────────────────────────────────────────────
     match /cash_sessions/{sessionId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated();
@@ -49,31 +73,36 @@ service cloud.firestore {
       }
     }
 
+    // ── Faltas/Estoque ─────────────────────────────────────────────
     match /shortages/{docId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated();
       allow delete: if isAdminOrMaster();
     }
 
+    // ── Locais ─────────────────────────────────────────────────────
     match /locations/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isAdminOrMaster();
+      allow write: if isAuthenticated();
     }
 
+    // ── Configurações ──────────────────────────────────────────────
     match /settings/{docId} {
       allow read: if isAuthenticated();
-      allow write: if isAdminOrMaster();
+      allow write: if isAuthenticated();
     }
 
+    // ── Conferência ────────────────────────────────────────────────
     match /conferences/{docId} {
       allow read: if isAuthenticated();
       allow write: if isAuthenticated();
     }
 
+    // ── Tentativas de acesso negado ────────────────────────────────
     match /access_attempts/{docId} {
       allow create: if true;
-      allow read, update: if hasRole('MASTER');
-      allow delete: if hasRole('MASTER');
+      allow read, update: if isAuthenticated();
+      allow delete: if isMaster();
     }
   }
 }

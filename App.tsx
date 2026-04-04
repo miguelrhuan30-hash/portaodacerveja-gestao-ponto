@@ -201,9 +201,28 @@ const App: React.FC = () => {
       if (firebaseUser) {
         console.log('[AUTH] firebaseUser.uid:', firebaseUser.uid);
         console.log('[AUTH] users carregados:', users.length);
-        console.log('[AUTH] users com firebaseUid:', users.map(u => ({id: u.id, firebaseUid: u.firebaseUid, email: u.email})));
-        const userDoc = users.find(u => u.firebaseUid === firebaseUser.uid);
+
+        // 1º: tenta encontrar pelo firebaseUid já vinculado
+        let userDoc = users.find(u => u.firebaseUid === firebaseUser.uid);
+
+        // 2º: fallback — busca pelo email (para usuários criados antes do Firebase Auth)
+        if (!userDoc && firebaseUser.email) {
+          userDoc = users.find(u => u.email === firebaseUser.email);
+          if (userDoc) {
+            // Auto-vincula o firebaseUid para logins futuros
+            console.log('[AUTH] Vinculando firebaseUid ao usuário:', userDoc.email);
+            try {
+              await import('firebase/firestore').then(({ doc, updateDoc } ) =>
+                updateDoc(doc(db, 'users', userDoc!.id), { firebaseUid: firebaseUser.uid })
+              );
+            } catch (e) {
+              console.warn('[AUTH] Não foi possível vincular firebaseUid:', e);
+            }
+          }
+        }
+
         console.log('[AUTH] userDoc encontrado:', userDoc?.email || 'NÃO ENCONTRADO');
+
         if (userDoc && userDoc.active) {
           setCurrentUser(userDoc);
           setIsLoggedIn(true);
